@@ -34,10 +34,12 @@ export const BotState = {
 
 const BOT_SPEED = 4.6;
 const CARRY_SPEED_MUL = 0.85;
-const BOT_HP = 100;
+const BOT_HP = 70;           // боты слабже: 70 хп вместо 100
 const RESPAWN_TIME = 5;
-const VIEW_DIST = 30;
-const SHOT_DAMAGE = 10;
+const VIEW_DIST = 26;        // чуть ближе видят
+const SHOT_DAMAGE = 6;       // урон ботов ниже (10 → 6)
+const BOT_AIM_ERR = 0.055;   // добавочная ошибка прицела (рад)
+const BOT_REACTION = 0.42;   // минимальная задержка перед первым выстрелом (с)
 
 // Состав: 2 напарника (ALPHA) + 3 + 3
 export const ROSTER = [
@@ -456,9 +458,10 @@ export class BotManager {
     }
     if (best !== bot.enemy) {
       bot.enemy = best;
-      bot.reactT = best ? 0.25 + Math.random() * 0.25 : 0;
+      // Реакция медленнее: 0.42–0.72 с до первого выстрела (было 0.25–0.5)
+      bot.reactT = best ? BOT_REACTION + Math.random() * 0.3 : 0;
       bot.burstLeft = 0;
-      bot.burstPauseT = 0.2;
+      bot.burstPauseT = 0.35;
     }
     bot.enemyDist = best ? bestD : Infinity;
     // Потерял цель из вида — забыть
@@ -491,7 +494,8 @@ export class BotManager {
     aim.divideScalar(dist || 1);
     // Точность: хуже с дистанцией; FLOW игрока делает его трудной мишенью
     const flowK = this.flow && target.isPlayer ? 1 + this.flow.flowNorm * 0.7 : 1;
-    const err = (0.012 + dist * 0.0011) * flowK * (bot._crouch ? 0.7 : 1); // присед точнее
+    // BOT_AIM_ERR — базовая ошибка: боты заметно мажут, особенно в движении
+    const err = (BOT_AIM_ERR * (bot.speed > 0.1 ? 1.6 : 1) + dist * 0.0016) * flowK * (bot._crouch ? 0.75 : 1);
     aim.x += (Math.random() - 0.5) * 2 * err;
     aim.y += (Math.random() - 0.5) * 2 * err;
     aim.z += (Math.random() - 0.5) * 2 * err;
@@ -768,8 +772,8 @@ export class BotManager {
       bot._crouch = 0;
       bot.burstPauseT -= dt;
       if (bot.burstPauseT <= 0) {
-        bot.burstLeft = 3 + Math.floor(Math.random() * 3);
-        bot.burstPauseT = 0.5 + Math.random() * 0.4;
+        bot.burstLeft = 2 + Math.floor(Math.random() * 3); // очереди короче (2-4)
+        bot.burstPauseT = 0.7 + Math.random() * 0.5;       // паузы длиннее
       }
     }
   }
