@@ -1,0 +1,9 @@
+node_modules/
+server/node_modules/
+server/data/
+dev/certs/
+*.log
+*.zip
+*.msi
+.DS_Store
+Thumbs.db

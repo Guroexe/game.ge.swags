@@ -1,0 +1,17 @@
+{
+  "name": "gen-swags-server",
+  "version": "1.0.0",
+  "description": "WebSocket server for gen.swags browser FPS (lobby, rooms, authoritative ticker, chat, friends, voice signaling)",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test-client.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

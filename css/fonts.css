@@ -1,0 +1,113 @@
+/* ===== GEN.SWAGS — локальные шрифты (assets/fonts/, OFL, см. CREDITS.md) =====
+   Офлайн-сборка: без Google Fonts CDN — работает по локальной сети на iPhone.
+   Набор v10: дизайнерские архитектурные шрифты — Unbounded (широкий гротеск,
+   кириллица), Ysabeau (элегантный «архитектурный» антиква), Jost (геометрический
+   гротеск), Zen Dots + Michroma (латинские акценты/лого), DotGothic16 (канji). */
+
+@font-face {
+  font-family: 'Unbounded';
+  src: url('../assets/fonts/unbounded-lat-800.woff2') format('woff2');
+  font-weight: 800; font-style: normal; font-display: swap;
+  unicode-range: U+0000-00FF, U+2000-206F;
+}
+@font-face {
+  font-family: 'Unbounded';
+  src: url('../assets/fonts/unbounded-cyr-800.woff2') format('woff2');
+  font-weight: 800; font-style: normal; font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Unbounded';
+  src: url('../assets/fonts/unbounded-cyr-400.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Ysabeau';
+  src: url('../assets/fonts/ysabeau-cyr-700.woff2') format('woff2');
+  font-weight: 700; font-style: normal; font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Ysabeau';
+  src: url('../assets/fonts/ysabeau-cyr-400.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Jost';
+  src: url('../assets/fonts/jost-cyr-500.woff2') format('woff2');
+  font-weight: 500; font-style: normal; font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Zen Dots';
+  src: url('../assets/fonts/zendots-lat-400.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+  unicode-range: U+0000-00FF, U+2000-206F;
+}
+@font-face {
+  font-family: 'Michroma';
+  src: url('../assets/fonts/michroma-lat-400.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+  unicode-range: U+0000-00FF, U+2000-206F;
+}
+@font-face {
+  font-family: 'Share Tech Mono';
+  src: url('../assets/fonts/ShareTechMono-Regular.ttf') format('truetype');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+/* Японский пиксельный шрифт (кана + канji) — под PS2-эстетику и иероглифы UI */
+@font-face {
+  font-family: 'DotGothic16';
+  src: url('../assets/fonts/DotGothic16-Regular.ttf') format('truetype');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+/* Глитч-шрифт (OFL, кириллица) — экраны смерти/гуро-акценты */
+@font-face {
+  font-family: 'Rubik Glitch';
+  src: url('../assets/fonts/RubikGlitch-Regular.ttf') format('truetype');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+
+:root {
+  /* Заголовки: широкий тяжёлый Unbounded */
+  --font-display: 'Unbounded', 'DotGothic16', 'Arial Black', sans-serif;
+  /* Архитектурные подзаголовки/лейблы: Ysabeau */
+  --font-arch: 'Ysabeau', 'Unbounded', 'DotGothic16', serif;
+  /* Тело/кнопки: геометрический Jost */
+  --font-mono: 'Jost', 'Share Tech Mono', 'DotGothic16', monospace;
+  /* Цифры/технические показатели */
+  --font-tech: 'Share Tech Mono', 'Jost', monospace;
+  /* Лого и латинские акценты: точечный Zen Dots / широкая Michroma */
+  --font-logo: 'Zen Dots', 'Unbounded', 'DotGothic16', sans-serif;
+  --font-latin: 'Michroma', 'Unbounded', sans-serif;
+  --font-jp: 'DotGothic16', 'Share Tech Mono', monospace;
+  --font-glitch: 'Rubik Glitch', 'Unbounded', 'DotGothic16', sans-serif;
+}
+
+/* ===== Растяжение/искажение букв в фирменной стилистике ===== */
+.menu-title, .death-title {
+  transform: scaleX(1.14) scaleY(1.06);
+  transform-origin: left center;
+  letter-spacing: 0.06em;
+}
+.page-sub {
+  font-family: var(--font-arch);
+  font-weight: 700;
+  transform: scaleX(1.22);
+  transform-origin: left center;
+  letter-spacing: 0.34em;
+}
+.menu-btn, .pick-card b {
+  font-family: var(--font-arch);
+  letter-spacing: 0.12em;
+}
+#weapon-name, .death-sub {
+  transform: scaleY(1.18);
+  letter-spacing: 0.2em;
+}
+#ammo-mag, #ammo-reserve, .hud-score b {
+  font-family: var(--font-tech);
+  font-stretch: condensed;
+}

@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>GEN.SWAGS — HUB_1</title>
+<link rel="icon" href="data:,">
+<meta name="description" content="GEN.SWAGS — браузерный FPS. Разрушаемость, кешаут, неко-мех, музыкально-реактивный геймплей.">
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/main.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.js",
+    "three/addons/": "./vendor/three/addons/"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+
+<!-- ===== ЗАГРУЗОЧНЫЙ ЭКРАН ===== -->
+<div id="boot-screen" class="overlay visible">
+  <div class="boot-inner">
+    <img class="boot-art" src="assets/ui/menu_header.png" alt="GEN.SWAGS">
+    <h1 class="boot-title">GEN<span class="dot">.</span>SWAGS</h1>
+    <img class="boot-divider" src="assets/ui/menu_divider.png" alt="">
+    <div class="boot-sub">NEKO-MECH COMBAT ENGINE // HUB_1</div>
+    <div class="jp-tag boot-jp">脳内接続・起動シーケンス</div>
+    <div class="boot-bar"><div id="boot-progress"></div></div>
+  <div id="boot-status">ИНИЦИАЛИЗАЦИЯ...</div>
+  <div class="boot-skip">КОСНИСЬ ЭКРАНА — ПРОПУСТИТЬ ОЖИДАНИЕ</div>
+  </div>
+</div>
+<script>
+// ЛОВУШКА ОШИБОК BOOT — стоит ДО загрузки модуля, поэтому ловит и падение
+// самого модуля (импорт three, синтаксис, исключение в конструкторе Game),
+// которое обработчик внутри main.js поймать не может.
+(function () {
+  var line = function (msg) {
+    var s = document.getElementById('boot-status');
+    if (s && /ИНИЦИАЛИЗАЦИЯ/.test(s.textContent)) {
+      s.textContent = 'ОШИБКА: ' + msg;
+      s.style.color = '#ff2d55';
+    }
+    console.error('[boot-trap]', msg);
+  };
+  window.addEventListener('error', function (e) {
+    line(e.message || (e.filename ? e.filename.split('/').pop() + ':' + e.lineno : 'скрипт'));
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e.reason;
+    line((r && r.message) ? r.message : String(r));
+  });
+  // watchdog: если через 12с статус всё ещё «ИНИЦИАЛИЗАЦИЯ» — boot не стартовал
+  setTimeout(function () {
+    var s = document.getElementById('boot-status');
+    if (s && /ИНИЦИАЛИЗАЦИЯ/.test(s.textContent)) {
+      line('boot не запустился — модуль не выполнился (проверь консоль F12)');
+    }
+  }, 12000);
+})();
+</script>
+
+<!-- ===== ГЛАВНОЕ МЕНЮ ===== -->
+<div id="menu-screen" class="overlay">
+  <div class="jp-watermark" aria-hidden="true">殺</div>
+  <div class="jp-side l" aria-hidden="true">殺戮兵器・脳内接続</div>
+  <div class="jp-side r" aria-hidden="true">深淵通信・精神断裂</div>
+  <!-- Главная страница -->
+  <div id="menu-main" class="menu-page visible">
+    <img class="menu-logo" src="assets/ui/menu_header.png" alt="GEN.SWAGS" width="110" height="110">
+    <h1 class="menu-title">GEN<span class="dot">.</span>SWAGS</h1>
+
+    <div class="jp-logo">ゲン・スワッグス</div>
+    <div class="menu-tag">HUB_1 // QUICK CASH PROTOCOL <span class="jp-tag">速金</span></div>
+    <div id="menu-rank"><span id="menu-rank-name">НЕЙРОН</span><span id="menu-rank-rating">1000</span></div>
+    <div id="mode-cards">
+      <button class="mode-card selected" data-mode="cashout"><b>3v3v3</b><span>QUICK CASH · кешаут-протокол, 8 мин</span></button>
+      <button class="mode-card" data-mode="duel"><b>1v1 ДУЭЛЬ</b><span>центр арены · первый до 7 киллов</span></button>
+      <button class="mode-card" data-mode="ffa"><b>FFA-3</b><span>каждый сам за себя · 5 мин · депозит +5</span></button>
+    </div>
+    <img class="giger-strip" src="assets/ui/tribal-skull.svg" alt="" aria-hidden="true">
+    <button id="btn-play" class="menu-btn">ИГРАТЬ HUB_1</button>
+    <button id="btn-multi" class="menu-btn sub">МУЛЬТИПЛЕЕР</button>
+    <button id="btn-rating" class="menu-btn sub">РЕЙТИНГ</button>
+    <button id="btn-settings" class="menu-btn sub">НАСТРОЙКИ</button>
+    <button id="btn-help" class="menu-btn sub">КАК ИГРАТЬ</button>
+    <button id="btn-music" class="menu-btn sub">МУЗЫКА</button>
+    <div class="menu-hints">
+      <div>WASD — движение · ЛКМ — огонь · ПКМ — ADS · SHIFT — спринт · CTRL — слайд</div>
+      <div>SPACE×2 — двойной прыжок · Q — дэш · E — ударная волна · F — крюк · G — граната · R — перезарядка</div>
+      <div>ЦЕЛЬ: подними кешбокс, доставь на станцию, защити депозит. 3000$ или 8 минут.</div>
+    </div>
+    <img class="giger-strip flip" src="assets/ui/tribal-skull.svg" alt="" aria-hidden="true">
+  </div>
+
+  <!-- Настройки -->
+  <div id="menu-settings" class="menu-page">
+    <div class="page-head">
+      <h2 class="page-title">НАСТРОЙКИ</h2>
+      <button id="btn-set-close" class="page-close" aria-label="Закрыть настройки">✕</button>
+    </div>
+    <div class="set-grid">
+      <div class="set-row">
+        <label>ЧУВСТВИТЕЛЬНОСТЬ МЫШИ</label>
+        <input type="range" id="set-sens" min="0.3" max="3" step="0.05" value="1">
+        <span id="set-sens-val" class="set-val">1.00</span>
+      </div>
+      <div class="set-row">
+        <label>ПОЛЕ ЗРЕНИЯ (FOV)</label>
+        <input type="range" id="set-fov" min="60" max="360" step="1" value="120">
+        <span id="set-fov-val" class="set-val">120°</span>
+      </div>
+      <div class="set-row">
+        <label>PIXEL SCALE (PS2-РЕЗ)</label>
+        <input type="range" id="set-pixel" min="0.35" max="1" step="0.05" value="0.5">
+        <span id="set-pixel-val" class="set-val">50%</span>
+      </div>
+      <div class="set-row btns">
+        <label>ЭФФЕКТЫ (АВТО/НИЗК/ВЫСК)</label>
+        <button id="btn-fx-quality" class="menu-btn small">АВТО</button>
+      </div>
+      <div class="set-row">
+        <label>ГРОМКОСТЬ МУЗЫКИ</label>
+        <input type="range" id="set-vol-music" min="0" max="1" step="0.05" value="0.55">
+        <span id="set-vol-music-val" class="set-val">55%</span>
+      </div>
+      <div class="set-row">
+        <label>ГРОМКОСТЬ SFX</label>
+        <input type="range" id="set-vol-sfx" min="0" max="1" step="0.05" value="0.7">
+        <span id="set-vol-sfx-val" class="set-val">70%</span>
+      </div>
+    </div>
+    <h3 class="page-sub">ГИРОСКОП</h3>
+    <div class="set-grid">
+      <div class="set-row check">
+        <label>ГИРОСКОП</label>
+        <input type="checkbox" id="set-gyro-on">
+      </div>
+      <div class="set-row">
+        <label>SENS X</label>
+        <input type="range" id="set-gyro-x" min="0.2" max="4" step="0.1" value="1.6">
+        <span id="set-gyro-x-val" class="set-val">1.6</span>
+      </div>
+      <div class="set-row">
+        <label>SENS Y</label>
+        <input type="range" id="set-gyro-y" min="0.2" max="4" step="0.1" value="1.6">
+        <span id="set-gyro-y-val" class="set-val">1.6</span>
+      </div>
+      <div class="set-row">
+        <label>ОТКЛИК (МГНОВЕННЫЙ — ПЛАВНЫЙ)</label>
+        <input type="range" id="set-gyro-response" min="0" max="1" step="0.05" value="0.15">
+        <span id="set-gyro-response-val" class="set-val">15%</span>
+      </div>
+      <div class="set-row check">
+        <label>ИНВЕРСИЯ X</label>
+        <input type="checkbox" id="set-gyro-inv-x">
+      </div>
+      <div class="set-row check">
+        <label>ИНВЕРСИЯ Y</label>
+        <input type="checkbox" id="set-gyro-inv-y">
+      </div>
+      <div class="set-row check">
+        <label>ФИЛЬТР ШУМА (DEAD-ZONE)</label>
+        <input type="checkbox" id="set-gyro-deadz">
+      </div>
+      <div class="set-row check">
+        <label>АНТИ-ДРЕЙФ (АВТОЦЕНТРИРОВАНИЕ)</label>
+        <input type="checkbox" id="set-gyro-drift">
+      </div>
+      <div class="set-row">
+        <label>СТАТУС</label>
+        <span id="gyro-status" class="gyro-status">—</span>
+      </div>
+      <div id="gyro-denied-help" class="gyro-denied-help" style="display:none">
+        <b>ГИРОСКОП ЗАБЛОКИРОВАН iOS — КАК ПОЧИНИТЬ:</b>
+        <ol>
+          <li>Открой <b>Настройки iPhone</b> → <b>Safari</b> (на iOS 17+: <b>Приложения → Safari</b>) → включи <b>«Движение и ориентация»</b>.</li>
+          <li>И/или прямо в Safari: нажми <b>«аА»</b> слева в адресной строке → <b>Настройки сайта</b> → <b>«Движение и ориентация»</b> → <b>Разрешить</b>.</li>
+          <li>Вернись в игру и нажми <b>ОБНОВИТЬ СТРАНИЦУ</b> ниже.</li>
+          <li>Если снова «ОТКАЗАНО» — удали данные сайта (Настройки → Safari → Дополнения → Данные сайтов → найди этот адрес → удалить) и обнови.</li>
+        </ol>
+        <button id="btn-gyro-reload" class="menu-btn small">ОБНОВИТЬ СТРАНИЦУ</button>
+      </div>
+      <div id="gyro-https-help" class="gyro-denied-help" style="display:none">
+        <b>⚠ ДАТЧИКИ НЕДОСТУПНЫ: СТРАНИЦА ОТКРЫТА ПО HTTP</b>
+        <ol>
+          <li>iOS отдаёт гироскоп <b>только по HTTPS</b>. Сейчас игра открыта по <b>http://</b> — Safari молча блокирует датчики.</li>
+          <li>На ПК запусти сервер с HTTPS: <b>start.bat</b> запускает его автоматически (или вручную: <b>python serve_https.py</b>).</li>
+          <li>Нажми большую красную кнопку ниже — откроется <b>https://…:8343</b>. Прими предупреждение сертификата (<b>Подробности → Перейти на сайт</b>).</li>
+          <li>Включи гироскоп выше — iOS спросит разрешение, нажми <b>«Разрешить»</b>.</li>
+        </ol>
+        <button id="btn-gyro-https" class="menu-btn gyro-https-btn">⛑ ПЕРЕЙТИ НА HTTPS (ГИРОСКОП) →</button>
+        <div id="gyro-https-auto" class="gyro-https-auto" style="display:none"></div>
+        <button id="btn-gyro-reload2" class="menu-btn small">ОБНОВИТЬ СТРАНИЦУ</button>
+      </div>
+      <div class="set-row btns">
+        <button id="btn-gyro-cal" class="menu-btn small">КАЛИБРОВКА</button>
+        <button id="btn-gyro-test" class="menu-btn small">ТЕСТ ГИРОСКОПА</button>
+        <button id="btn-gyro-perm" class="menu-btn small" style="display:none">РАЗРЕШИТЬ ДАТЧИКИ (iOS)</button>
+      </div>
+    </div>
+    <h3 class="page-sub">БОЕВОЙ КОМПЛЕКТ <span class="jp jp-hl">武装</span></h3>
+    <div class="set-grid">
+      <div class="set-row"><label>АРСЕНАЛ (СЛУЧАЙНЫЙ СТВОЛ НА КАЖДОМ РЕСПАВНЕ)</label></div>
+      <div id="weapon-select" class="pick-grid"></div>
+      <div class="set-row"><label>СКИН КОМАНДЫ</label></div>
+      <div id="skin-select" class="pick-grid"></div>
+    </div>
+    <h3 class="page-sub">ТАЧ-УПРАВЛЕНИЕ</h3>
+    <div class="set-grid">
+      <div class="set-row check">
+        <label>ДЖОЙСТИК: ЛЕВАЯ СТОРОНА = ЦЕНТР</label>
+        <input type="checkbox" id="set-stick-float">
+      </div>
+      <div class="set-row btns">
+
+        <button id="btn-touch-layout" class="menu-btn small">НАСТРОИТЬ КНОПКИ</button>
+        <button id="btn-touch-layout-reset" class="menu-btn small">СБРОС РАСКЛАДКИ</button>
+      </div>
+    </div>
+    <button id="btn-set-back" class="menu-btn small back">← НАЗАД (СОХРАНЕНО АВТОМАТИЧЕСКИ)</button>
+  </div>
+
+  <!-- Музыка -->
+  <div id="menu-music" class="menu-page">
+    <h2 class="page-title">МУЗЫКА</h2>
+    <div id="playlist"></div>
+    <button id="btn-music-file" class="menu-btn sub">ЗАГРУЗИТЬ СВОЙ ТРЕК</button>
+    <input type="file" id="music-file-input" accept="audio/*" style="display:none">
+    <div class="mus-stats">
+      <span id="mus-bpm">♪ — BPM</span>
+      <div class="mus-energy"><div id="mus-energy-fill"></div></div>
+      <span class="mus-cap">ЭНЕРГИЯ</span>
+    </div>
+    <div class="menu-hints">Или перетащите аудиофайл в любое место окна</div>
+    <button id="btn-mus-back" class="menu-btn small back">← НАЗАД</button>
+  </div>
+
+  <!-- Как играть -->
+  <div id="menu-help" class="menu-page">
+    <div class="page-head">
+      <h2 class="page-title">КАК ИГРАТЬ</h2>
+      <button id="btn-help-close" class="page-close" aria-label="Закрыть помощь">✕</button>
+    </div>
+
+    <h3 class="page-sub">ЦЕЛЬ <span class="jp jp-hl">目的</span></h3>
+    <div class="help-block">
+      <p><b>КЕШАУТ (HUB_1):</b> подними <b>кешбокс</b> в центре арены → отнеси на свою <b>станцию</b> → защищай депозит <b>45 секунд</b>. Удержал — деньги твои. Победа: <b>3000$</b> или лучший счёт за <b>8 минут</b>.</p>
+      <p><b>ДУЭЛЬ</b> — ты против ИИ-чемпиона, <b>FFA-3</b> — каждый сам за себя, депозит идёт быстрее.</p>
+      <p>Кешбокс можно <b>бросать</b> (физика) — кидай к станции или вырывай из чужих рук. В руках с кешом ты светишься для всех.</p>
+    </div>
+
+    <h3 class="page-sub">СМЫСЛ МУЗЫКИ <span class="jp jp-hl">音楽</span></h3>
+    <div class="help-block">
+      <p>Музыка — это <b>не фон, а твой бафф-двигатель</b>. Игра слушает трек вживую: бит, энергию и дропы.</p>
+      <p>· <b>FLOW-метр</b> растёт от киллов и действий <b>в бит</b>: даёт скорость, урон и реген ХП. Молчишь — FLOW тает.</p>
+      <p>· <b>Ритм-судья:</b> выстрел, дэш или перезарядка ровно на бите = бонусы (дэш дальше, спред уже). Килл на бите — <b>×2 FLOW</b>.</p>
+      <p>· <b>DROP:</b> когда трек срывается в дроп — мир датамош-искажается, а твой урон <b>×2</b>. Это твой момент пушить.</p>
+      <p>· <b>BREAKDOWN:</b> тихая часть трека — слоу-мо «вдох»: время тянется, перезарядись и займи позицию.</p>
+      <p>· <b>ZE FLOW:</b> стрик 8+ идеальных попаданий в бит — максимальная форма: след, свечение, пиковые баффы.</p>
+      <p>· Чем энергичнее трек, тем чаще дропы. Загрузи свой трек в меню <b>МУЗЫКА</b> — игра разберёт его сама.</p>
+    </div>
+
+    <h3 class="page-sub">УПРАВЛЕНИЕ <span class="jp jp-hl">操作</span></h3>
+    <div class="help-block">
+      <p>WASD — движение · ЛКМ — огонь · ПКМ — ADS · SHIFT — спринт · CTRL — присед / <b>слайд на бегу</b></p>
+      <p>SPACE — прыжок (×2 — двойной) · Q — дэш · E — ударная волна · F — крюк · G — граната · R — перезарядка</p>
+      <p>На таче: левый стик — движение, свайп — камера, кнопки на экране. Стрелять и вертеть камерой можно одновременно. Гироскоп — в настройках (нужен HTTPS).</p>
+    </div>
+
+    <h3 class="page-sub">АРЕНА <span class="jp jp-hl">戦場</span></h3>
+    <div class="help-block">
+      <p>· Ствол выдаётся <b>случайно на каждом респавне</b> — патроны бесконечны, но есть перезарядка.</p>
+      <p>· <b>Джамп-пады</b> (красные шевроны) швыряют вверх — мега-пады закидывают на крыши. Падение за арену = смерть.</p>
+      <p>· Здания <b>разрушаемы</b>: крыша без опор падает, обломки ранят.</p>
+      <p>· По арене летает <b>череп-змея</b> — полупрозрачный призрак-охотник. Он убивает любого, его нельзя трогать, сквозь стены не пройдёт.</p>
+    </div>
+    <button id="btn-help-back" class="menu-btn small back">← НАЗАД</button>
+  </div>
+
+  <!-- Рейтинг -->
+  <div id="menu-rating" class="menu-page">
+    <h2 class="page-title">РЕЙТИНГ</h2>
+    <div id="rating-me"></div>
+    <div id="rating-table"></div>
+    <div class="menu-hints" id="rating-hint">Соло: ELO по итогам матчей (место команды + личная статистика)</div>
+    <button id="btn-rating-back" class="menu-btn small back">← НАЗАД</button>
+  </div>
+
+  <!-- Мультиплеер -->
+  <div id="menu-mp" class="menu-page">
+    <h2 class="page-title">МУЛЬТИПЛЕЕР</h2>
+    <div class="mp-tabs">
+      <button id="mp-tab-game" class="mp-tab active">ИГРА</button>
+      <button id="mp-tab-friends" class="mp-tab">ДРУЗЬЯ <span id="fr-badge" class="fr-badge hidden">!</span></button>
+    </div>
+
+    <div id="mp-pane-game">
+      <!-- Подключение -->
+      <div id="mp-connect">
+        <input id="mp-name" class="mp-input" maxlength="20" placeholder="НИК" autocomplete="off">
+        <input id="mp-server" class="mp-input" placeholder="ws://host:7777" autocomplete="off" spellcheck="false">
+        <button id="btn-mp-connect" class="menu-btn small">ПОДКЛЮЧИТЬСЯ</button>
+        <div id="mp-conn-status"></div>
+      </div>
+
+      <!-- Список комнат -->
+      <div id="mp-rooms-block" class="hidden">
+        <div class="mp-row mp-row-head">
+          <span class="mp-h">КОМНАТЫ</span>
+          <button id="btn-mp-refresh" class="menu-btn tiny">ОБНОВИТЬ</button>
+        </div>
+        <div id="mp-rooms"></div>
+        <div class="mp-row">
+          <input id="mp-room-name" class="mp-input" maxlength="24" placeholder="ИМЯ КОМНАТЫ" autocomplete="off">
+          <button id="btn-mp-create" class="menu-btn tiny">СОЗДАТЬ</button>
+        </div>
+      </div>
+
+      <!-- Лобби комнаты -->
+      <div id="mp-lobby" class="hidden">
+        <div class="mp-row mp-row-head">
+          <span class="mp-h" id="mp-lobby-name">HUB_1</span>
+          <button id="btn-mp-leave" class="menu-btn tiny">ВЫЙТИ</button>
+        </div>
+        <div id="mp-players"></div>
+        <div class="mp-row">
+          <button id="btn-mp-ready" class="menu-btn small">ГОТОВ</button>
+          <button id="btn-mp-mic" class="menu-btn small mic off" title="Микрофон">🎤 ВЫКЛ</button>
+        </div>
+        <div id="mp-lobby-chat"></div>
+        <div class="mp-row">
+          <input id="mp-lobby-chat-input" class="mp-input" maxlength="200" placeholder="Сообщение…" autocomplete="off">
+          <button id="btn-mp-chat-send" class="menu-btn tiny">→</button>
+        </div>
+        <div class="menu-hints">Когда все готовы — матч начнётся автоматически</div>
+      </div>
+    </div>
+
+    <!-- Друзья -->
+    <div id="mp-pane-friends" class="hidden">
+      <div class="mp-row">
+        <input id="fr-name" class="mp-input" maxlength="20" placeholder="НИК ДРУГА" autocomplete="off">
+        <button id="btn-fr-add" class="menu-btn tiny">ДОБАВИТЬ</button>
+      </div>
+      <div id="fr-requests"></div>
+      <div id="fr-list"></div>
+      <div id="fr-status"></div>
+    </div>
+
+    <button id="btn-mp-back" class="menu-btn small back">← НАЗАД</button>
+  </div>
+</div>
+
+<!-- ===== ПАУЗА ===== -->
+<div id="pause-screen" class="overlay">
+  <div class="pause-inner">
+    <h2 class="page-title">ПАУЗА</h2>
+    <button id="btn-resume" class="menu-btn">ПРОДОЛЖИТЬ</button>
+    <button id="btn-pause-settings" class="menu-btn sub">НАСТРОЙКИ</button>
+    <button id="btn-quit" class="menu-btn sub">ВЫЙТИ В МЕНЮ</button>
+  </div>
+</div>
+
+<!-- ===== ЭКРАН СМЕРТИ ===== -->
+<div id="death-screen" class="overlay passthrough">
+  <div class="death-inner">
+    <div class="death-jp" aria-hidden="true">死</div>
+    <div class="death-title">ВЫ УНИЧТОЖЕНЫ</div>
+    <div class="death-sub">ПЕРЕНОС В ИНОЙ МИР ЧЕРЕЗ <span id="death-timer">5</span> <span class="jp-tag">転移</span></div>
+  </div>
+</div>
+
+<!-- ===== ЭКРАН КОНЦА МАТЧА ===== -->
+<div id="end-screen" class="overlay">
+  <div class="end-inner">
+    <h1 id="end-title" class="win">ПОБЕДА</h1>
+    <img class="giger-strip slim" src="assets/ui/tribal-skull.svg" alt="" aria-hidden="true">
+    <div id="end-scores"></div>
+    <div id="end-stats"></div>
+    <div id="end-rating"></div>
+    <button id="btn-again" class="menu-btn">ЕЩЁ РАЗ</button>
+    <button id="btn-tomenu" class="menu-btn sub">В МЕНЮ</button>
+  </div>
+</div>
+
+<!-- ===== PSY-BREAK ИНТЕРМИССИЯ (мета-петля) ===== -->
+<div id="intermission-screen" class="overlay passthrough">
+  <div class="inter-inner">
+    <h1 class="inter-title">PSY-BREAK</h1>
+    <div class="jp-tag inter-jp">精神断裂</div>
+    <div class="inter-sub" id="inter-arena">СЛЕДУЮЩАЯ АРЕНА: …</div>
+    <div class="inter-stats" id="inter-stats"></div>
+    <div class="inter-rating">
+      <span id="inter-rank">НЕЙРОН</span>
+      <span id="inter-rating-num">1000</span>
+      <span id="inter-rating-delta"></span>
+    </div>
+    <div class="inter-timer" id="inter-timer">12</div>
+  </div>
+</div>
+
+<!-- ===== DROP-ZONE для своей музыки ===== -->
+<div id="drop-zone" class="overlay passthrough"><div>ПЕРЕТАЩИТЕ ТРЕК СЮДА</div></div>
+
+<!-- ===== HUD ===== -->
+<div id="hud" class="overlay passthrough">
+  <!-- Прицел -->
+  <div id="crosshair">
+    <span class="ch-line ch-t"></span><span class="ch-line ch-b"></span>
+    <span class="ch-line ch-l"></span><span class="ch-line ch-r"></span>
+    <span id="hitmarker"></span>
+    <span id="rhythm-ring"></span>
+    <span id="rhythm-judge"></span>
+    <span id="rhythm-combo"></span>
+  </div>
+
+  <!-- Комбо-цепочка убийств (二連殺 ×N) — крупный попап под прицелом -->
+  <div id="chain-popup" aria-hidden="true"><span class="jp" id="chain-jp">二連殺</span><span id="chain-text">ДВОЙНОЕ УБИЙСТВО</span></div>
+
+  <!-- Низ-слева: HP в готической рамке (трибал Гигер + череп) -->
+  <div id="hud-bl" class="pulse">
+    <img class="hp-tribal" src="assets/ui/tribal-skull.svg" alt="" aria-hidden="true">
+    <svg class="goth-frame" viewBox="0 0 260 74" aria-hidden="true">
+      <g fill="none" stroke="#ff2d55" stroke-width="2" stroke-linejoin="round">
+        <path d="M6 68 L6 20 L16 8 L60 8 L66 2 L120 2 L126 8 L244 8 L254 20 L254 68 Z"/>
+        <path d="M6 20 L0 12 M6 40 L0 34 M254 20 L260 12 M254 40 L260 34" stroke="#a05cff"/>
+        <path d="M30 8 L34 0 L38 8 M220 8 L224 0 L228 8"/>
+      </g>
+      <!-- череп -->
+      <g transform="translate(14,18)" fill="none" stroke="#e8e8f0" stroke-width="2">
+        <path d="M20 0 C8 0 4 10 4 18 C4 25 8 29 12 31 L12 40 L17 40 L17 34 L20 34 L20 40 L25 40 L25 34 L28 34 L28 40 L33 40 L33 31 C37 29 41 25 41 18 C41 10 32 0 20 0 Z"/>
+        <circle cx="13" cy="18" r="3.4" fill="#ff2d55" stroke="none"/>
+        <circle cx="27" cy="18" r="3.4" fill="#ff2d55" stroke="none"/>
+        <path d="M20 23 L18 28 L22 28 Z" fill="#e8e8f0" stroke="none"/>
+      </g>
+    </svg>
+    <div class="hp-wrap">
+      <div id="hp-num">100</div>
+      <div id="hp-segs"></div>
+      <div class="jp hp-jp" aria-hidden="true">生命</div>
+    </div>
+  </div>
+
+  <!-- Низ-справа: патроны / гранаты / иконка оружия -->
+  <div id="hud-br" class="pulse">
+    <div id="weapon-name">АВТОМАТ «СКИТАЛЕЦ»</div>
+    <div id="ammo"><span id="ammo-mag">030</span><span class="ammo-sep">/</span><span id="ammo-reserve">135</span><span class="jp ammo-jp" aria-hidden="true">弾薬</span></div>
+    <div class="br-row">
+      <span id="nade">
+        <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="14" r="7" fill="none" stroke="#ff2d55" stroke-width="2"/><rect x="10" y="3" width="4" height="4" fill="#ff2d55"/><path d="M14 5 Q18 4 18 8" fill="none" stroke="#a05cff" stroke-width="2"/></svg>
+        G <b id="nade-count">×2</b>
+      </span>
+      <span id="weapon-icon">
+        <svg id="wi-rifle" viewBox="0 0 48 20" width="54" height="22"><g fill="none" stroke="#e8e8f0" stroke-width="2"><path d="M2 12 L30 12 L30 8 L44 8 L44 11 L46 11 M30 12 L28 18 L24 18 L26 12 M10 12 L10 17 L14 17 L14 12"/></g></svg>
+        <svg id="wi-shotgun" class="hidden" viewBox="0 0 48 20" width="54" height="22"><g fill="none" stroke="#e8e8f0" stroke-width="2"><path d="M2 10 L34 10 L34 7 L46 7 M2 13 L34 13 L34 16 L40 16 M12 13 L12 18 L18 18 L18 13"/></g></svg>
+      </span>
+    </div>
+  </div>
+
+  <!-- Скилы Q/E/F/G — квадратные слоты с белыми глифами, клавиша снизу -->
+  <div id="hud-skills" class="pulse">
+    <div class="sk-col">
+      <div class="skill ready" id="skill-q"><div class="sk-cd"></div>
+        <svg class="sk-ico" viewBox="0 0 24 24"><g fill="none" stroke="#e8e8f0" stroke-width="2" stroke-linecap="round"><path d="M4 14 L14 14 M7 10 L17 10 M10 6 L20 6"/><path d="M14 4 L22 12 L14 20" stroke-width="2.4"/></g></svg>
+      </div><span class="sk-key">Q</span>
+    </div>
+    <div class="sk-col">
+      <div class="skill ready" id="skill-e"><div class="sk-cd"></div>
+        <svg class="sk-ico" viewBox="0 0 24 24"><g fill="none" stroke="#e8e8f0" stroke-width="2"><circle cx="12" cy="12" r="3.2"/><path d="M12 2 L12 6 M12 18 L12 22 M2 12 L6 12 M18 12 L22 12 M5 5 L7.8 7.8 M16.2 16.2 L19 19 M19 5 L16.2 7.8 M7.8 16.2 L5 19"/></g></svg>
+      </div><span class="sk-key">E</span>
+    </div>
+    <div class="sk-col">
+      <div class="skill ready" id="skill-f"><div class="sk-cd"></div>
+        <svg class="sk-ico" viewBox="0 0 24 24"><g fill="none" stroke="#e8e8f0" stroke-width="2" stroke-linecap="round"><path d="M5 20 Q5 10 13 8"/><path d="M13 8 L11 5 M13 8 L16 5.4"/><path d="M18 3 C21 5 21 9 18 11 C16 12 14 11 13.5 9"/></g></svg>
+      </div><span class="sk-key">F</span>
+    </div>
+    <div class="sk-col">
+      <div class="skill" id="skill-g"><div class="sk-cd" style="transform:scaleY(0)"></div><span class="sk-count">2</span></div>
+      <span class="sk-key">G</span>
+    </div>
+  </div>
+
+  <!-- Верх-центр: панель счёта (референс: A 75 | 07.12 | C 64) + ромбы -->
+  <div id="hud-tc" class="pulse">
+    <div id="score-bar">
+      <span class="sc a">ALPHA <b id="score-val-a">0</b></span>
+      <span class="sb-sep">|</span>
+      <span id="match-timer">8:00</span>
+      <span class="sb-sep">|</span>
+      <span class="sc b">BRAVO <b id="score-val-b">0</b></span>
+      <span class="sc c">CHARLIE <b id="score-val-c">0</b></span>
+    </div>
+    <div id="hud-rank">НЕЙРОН · 1000</div>
+    <div id="obj-diamonds"><span class="od a">A</span><span class="od b">B</span><span class="od c">C</span></div>
+  </div>
+
+  <!-- Маркеры зон A/B/C в мире (проекция, ромбы как в референсе) -->
+  <div id="zone-markers"></div>
+
+  <!-- Вертикальная JP-полоса в бою (гуро-рейтинг 18+) -->
+  <div class="hud-jp-strip" aria-hidden="true">十八禁・流血・暴力・グロテスク・殺戮</div>
+
+  <!-- Верх-слева: радар + CASH + тиммейты -->
+  <div id="hud-tl" class="pulse">
+    <canvas id="radar" width="160" height="160"></canvas>
+    <div id="cash">CASH $<span id="cash-val">0</span></div>
+    <div id="mates"></div>
+  </div>
+
+  <!-- Верх-справа: NOW PLAYING (глитч-череп + текст, как в референсе) -->
+  <div id="hud-tr" class="pulse">
+    <div class="np-art">
+      <img src="assets/ui/tribal-skull.svg" alt="">
+      <div class="np-scan"></div>
+    </div>
+    <div class="np-body">
+      <div id="np-title">▶ NOW PLAYING <span class="jp jp-hl">音</span></div>
+      <div id="np-track">—</div>
+      <div id="np-progress"><div id="np-progress-fill"></div></div>
+      <canvas id="np-eq" width="132" height="28"></canvas>
+      <div id="np-bpm"></div>
+    </div>
+  </div>
+
+  <!-- FLOW-метр (вертикальный, сбоку) -->
+  <div id="flow-wrap">
+    <div id="flow-bar"><div id="flow-fill"></div></div>
+    <div id="flow-label">FLOW<span class="jp jp-hl">流</span></div>
+    <div id="flow-num">0</div>
+  </div>
+
+  <!-- Статус объективов (канал/депозит) -->
+  <div id="obj-status">
+    <div id="obj-status-label">ЗАГРУЗКА</div>
+    <div id="obj-status-bar"><div id="obj-status-fill"></div></div>
+  </div>
+
+  <div id="notify"></div>
+  <div id="kill-feed"></div>
+  <div id="damage-vignette"></div>
+  <div id="drop-flash"></div>
+
+  <!-- Чат в матче (левый низ) -->
+  <div id="chat-feed"></div>
+  <div id="chat-input-wrap">
+    <span id="chat-mode-label">ВСЕМ</span>
+    <input id="chat-input" maxlength="200" placeholder="Сообщение… (Enter — отправить, Esc — закрыть)" autocomplete="off">
+  </div>
+  <button id="btn-mic-hud" class="mic off" title="Микрофон">🎤</button>
+</div>
+
+<!-- iOS: WebGL-контекст убит системой (навигация HTTP↔HTTPS / фон).
+     На уровне body — должен перекрывать и меню, и HUD. -->
+<div id="gfx-lost" class="gfx-lost">
+  <div class="gfx-lost-box">
+    <div class="gfx-lost-title">СИГНАЛ ПОТЕРЯН</div>
+    <div class="gfx-lost-jp">信号消失</div>
+    <div class="gfx-lost-sub">iOS выгрузил графику при переходе между HTTP/HTTPS или сворачивании</div>
+    <button id="gfx-lost-reload" class="menu-btn">ОБНОВИТЬ СТРАНИЦУ</button>
+  </div>
+</div>
+
+<!-- ===== ТАЧ-УПРАВЛЕНИЕ ===== -->
+<div id="touch-ui" class="overlay passthrough">
+  <div id="stick-move" class="stick"><div class="stick-base"></div><div class="stick-knob"></div></div>
+  <button class="tbtn tbtn-pause" id="tbtn-pause">| |</button>
+  <div id="touch-buttons">
+    <button class="tbtn" id="tbtn-fire">ОГОНЬ</button>
+    <button class="tbtn" id="tbtn-jump">ПРЫЖ</button>
+    <button class="tbtn" id="tbtn-slide">СЛАЙД</button>
+    <button class="tbtn" id="tbtn-dash">Q</button>
+    <button class="tbtn" id="tbtn-shock">E</button>
+    <button class="tbtn" id="tbtn-grapple">F</button>
+    <button class="tbtn" id="tbtn-nade">G</button>
+    <button class="tbtn" id="tbtn-reload">R</button>
+    <button class="tbtn" id="tbtn-weapon">1/2</button>
+    <button class="tbtn" id="tbtn-ads">ADS</button>
+    <button class="tbtn" id="tbtn-chat">ЧАТ</button>
+  </div>
+</div>
+
+<!-- ===== ДИАГНОСТИКА ГИРОСКОПА (настройки → ТЕСТ ГИРОСКОПА или ?gyrodebug=1) ===== -->
+<div id="gyro-debug" class="overlay passthrough">
+  <div class="gyro-panel">
+    <h3 class="gyro-title">ТЕСТ ГИРОСКОПА</h3>
+    <div class="gyro-row"><span>СТАТУС</span><span id="gd-status" class="gd-val">—</span></div>
+    <div class="gyro-row"><span>РАЗРЕШЕНИЕ</span><span id="gd-perm" class="gd-val">—</span></div>
+    <div class="gyro-row"><span>ИСТОЧНИК</span><span id="gd-source" class="gd-val">—</span></div>
+    <div class="gyro-row"><span>ALPHA/BETA/GAMMA</span><span id="gd-abg" class="gd-val">—</span></div>
+    <div class="gyro-row"><span>YAW/PITCH</span><span id="gd-yawpitch" class="gd-val">—</span></div>
+    <div class="gyro-row"><span>СОБЫТИЯ</span><span id="gd-hz" class="gd-val">—</span></div>
+    <div class="gyro-row"><span>ЛАТЕНТНОСТЬ</span><span id="gd-latency" class="gd-val">—</span></div>
+    <div class="gyro-row"><span>FPS</span><span id="gd-fps" class="gd-val">—</span></div>
+    <div class="gyro-row"><span>ФЛАГИ</span><span id="gd-flags" class="gd-val">—</span></div>
+    <div class="gyro-btns">
+      <button id="gd-cal" class="menu-btn tiny">КАЛИБРОВКА</button>
+      <button id="gd-close" class="menu-btn tiny">ЗАКРЫТЬ</button>
+    </div>
+    <div class="gyro-hint">Поднимите устройство и поверните — ALPHA/BETA/GAMMA и YAW/PITCH должны меняться, СОБЫТИЯ ≈ 60 Гц, ЛАТЕНТНОСТЬ &lt; 30 мс, ИСТОЧНИК = FUSION</div>
+  </div>
+</div>
+
+<!-- ===== ВИЗУАЛЬНАЯ КАЛИБРОВКА ГИРОСКОПА ===== -->
+<div id="gyro-cal" class="overlay">
+  <div class="gcal-panel">
+    <div class="page-head gcal-head">
+      <h3 class="gcal-title">КАЛИБРОВКА ГИРОСКОПА</h3>
+      <button id="gcal-close" class="page-close" aria-label="Закрыть">✕</button>
+    </div>
+    <canvas id="gcal-canvas" width="340" height="210"></canvas>
+    <div id="gcal-msg" class="gcal-msg">ДЕРЖИ УСТРОЙСТВО УДОБНО — ЭТО БУДЕТ «НОЛЬ»</div>
+    <div class="gcal-nums">
+      <div class="gcal-row"><span>ALPHA/BETA/GAMMA</span><span id="gcal-abg" class="gcal-val">—</span></div>
+      <div class="gcal-row"><span>YAW/PITCH (ОТ НУЛЯ)</span><span id="gcal-yp" class="gcal-val">—</span></div>
+      <div class="gcal-row"><span>ЧАСТОТА</span><span id="gcal-hz" class="gcal-val">0 Гц</span></div>
+      <div class="gcal-row"><span>ДАТЧИК</span><span id="gcal-status" class="gcal-val">—</span></div>
+    </div>
+    <div id="gcal-progress"><div id="gcal-progress-fill"></div></div>
+    <div class="gcal-btns">
+      <button id="gcal-start" class="menu-btn small">КАЛИБРОВАТЬ (3-2-1)</button>
+      <button id="gcal-test" class="menu-btn small">ПРОВЕРКА (5 С)</button>
+    </div>
+    <div id="gcal-advice" class="gcal-advice"></div>
+  </div>
+</div>
+
+<!-- ===== РЕДАКТОР РАСКЛАДКИ ТАЧ-КНОПОК ===== -->
+<div id="touch-layout-editor" class="overlay">
+  <div id="tle-stage"></div>
+  <div id="tle-top">
+    <span class="tle-title">РАСКЛАДКА КНОПОК</span>
+    <span id="tle-hint">ТЯНИ КНОПКУ · ТАП — ВЫБРАТЬ · СЕТКА 8PX</span>
+    <span id="tle-warn"></span>
+  </div>
+  <div id="tle-bar">
+    <label id="tle-scale-wrap">РАЗМЕР
+      <input type="range" id="tle-scale" min="0.7" max="1.5" step="0.05" value="1">
+      <span id="tle-scale-val">×1.00</span>
+    </label>
+    <button id="tle-reset" class="menu-btn tiny">СБРОС</button>
+    <button id="tle-save" class="menu-btn tiny">СОХРАНИТЬ</button>
+    <button id="tle-cancel" class="menu-btn tiny">ОТМЕНА</button>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
