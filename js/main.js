@@ -179,6 +179,8 @@ class Game {
       { id: 'hell', name: 'ГЕЕННА', jp: '地獄', desc: 'Лава, огонь, узкие проходы' },
       { id: 'sng', name: 'СЕКТОР-9', jp: '區', desc: 'Индустриальный лабиринт' },
       { id: 'ruins', name: 'РУИНЫ', jp: '廃墟', desc: 'Разрушенный город, обломки' },
+      { id: 'dust2', name: 'ДАСТ-2', jp: '砂塵', desc: 'Легендарная CS-карта de_dust2' },
+      { id: 'goldencity', name: 'ЗОЛОТОЙ ГОРОД', jp: '金城', desc: 'Неоновый мегаполис' },
       { id: null, name: 'СЛУЧАЙНО', jp: '乱', desc: 'Случайная арена из ротации' },
     ];
     const wrap = document.createElement('div');
@@ -1531,7 +1533,7 @@ class Game {
       this._pendingArena = null;
       if (v !== this._arenaVariant) {
         this.rebuildArena(v);
-        const rot = ['eden', 'hell', 'sng', 'ruins'];
+        const rot = ['eden', 'hell', 'sng', 'ruins', 'dust2', 'goldencity'];
         const ri = rot.indexOf(v);
         if (ri >= 0 && this.meta) this.meta.arenaIndex = ri;
       }

@@ -6,12 +6,14 @@
 import { RatingSystem } from './rating.js';
 import { fisheyeCurve, clamp01 } from './soundwar.js';
 
-export const ARENA_ROTATION = ['eden', 'hell', 'sng', 'ruins'];
+export const ARENA_ROTATION = ['eden', 'hell', 'sng', 'ruins', 'dust2', 'goldencity'];
 export const ARENA_NAMES = {
   eden: '«РАЙ-7» 楽園',
   hell: '«ГЕЕННА» 地獄',
   sng: '«СЕКТОР-9» 區',
   ruins: '«РУИНЫ» 廃墟',
+  dust2: '«ДАСТ-2» 砂塵',
+  goldencity: '«ЗОЛОТОЙ ГОРОД» 金城',
   cathedral: 'HUB_1 «СОБОР» 聖堂',
   abyss: '«БЕЗДНА» 深淵',
   necro: '«НЕКРО-ЗАВОД» 死工場',
