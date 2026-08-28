@@ -587,7 +587,8 @@ class Game {
       };
     }
 
-    // Змея-череп HYPER DEMON: неуязвимый преследующий NPC (соло only)
+    // Змея-череп HYPER DEMON: хрупкий преследующий NPC (соло only), 40 HP,
+    // респавн 8–12с в случайной точке
     this.skullSwarm = new SkullSwarm({
       scene: this.engine.scene, sfx: this.sfx, gore: this.weapons.gore,
       physics: this.physics,
@@ -605,6 +606,9 @@ class Game {
 
     // Оружие → события
     this.weapons.onKill = (bot, opts) => {
+      // Змея-череп (team -99) — свой обработчик skullSwarm.onKill (киллфид,
+      // цепочка, гибсы); здесь не считаем, чтобы не было дабл-каунта
+      if (bot.team === -99) return;
       this.hud?.killFeed(`ВЫ УНИЧТОЖИЛИ ${bot.name}`);
       const mult = this.flow.registerKill(); // килл на бите = ×2 FLOW (внутри)
       if (mult > 1) this.hud?.notify('КИЛЛ НА БИТЕ ×2 FLOW', 'drop');
