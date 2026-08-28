@@ -9,13 +9,13 @@
 // Только соло (в MP авторитет сервера, змея отключена).
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { createSkull } from '../engine/models.js';
+import { createSkull, addOutline } from '../engine/models.js';
 import { raySphere } from './bots.js';
 
-// Скачанная low-poly модель черепа (KayKit Halloween, MIT — CREDITS.md).
+// Скачанная low-poly модель: рогатый череп демона (OpenGameArt, CC0 — CREDITS.md).
 // Нормируется к 1 юниту высоты, центр в нуле; лицо смотрит в +Z (lookAt-ready).
 let SKULL_GLB = null;
-export async function loadSkullTemplate(url = 'assets/models/skull/skull.gltf') {
+export async function loadSkullTemplate(url = 'assets/models/skull/demon_skull.glb') {
   try {
     const gltf = await new Promise((res, rej) => new GLTFLoader().load(url, res, undefined, rej));
     const root = gltf.scene;
@@ -67,6 +67,7 @@ function ghostify(group, opacity) {
   group.traverse((o) => {
     if (!o.isMesh) return;
     if (o.userData.isEye) { o.frustumCulled = false; return; } // глаза — свои материалы
+    if (o.userData.isOutline) return; // белый контур не тонируем
     const m = o.material.clone();
     m.transparent = true;
     m.opacity = opacity;
@@ -75,6 +76,13 @@ function ghostify(group, opacity) {
     o.material = m;
     o.frustumCulled = false;
   });
+}
+
+// Белый контур силуэта на всех мешах группы (кроме глаз) — змею видно издалека
+function outlineGroup(group, addOutline) {
+  const meshes = [];
+  group.traverse((o) => { if (o.isMesh && !o.userData.isEye && !o.userData.isOutline) meshes.push(o); });
+  for (const m of meshes) addOutline(m, 1.07);
 }
 
 function makeGlowSprite(color = 'rgba(80,255,170,') {
@@ -132,6 +140,7 @@ export class SkullSwarm {
       }
     }
     ghostify(head, 0.62);
+    outlineGroup(head, addOutline); // белый силуэт — змею видно издалека
     const headGlow = makeGlowSprite();
     headGlow.scale.setScalar(2.6);
     headGlow.position.y = 0.4;
@@ -142,6 +151,7 @@ export class SkullSwarm {
       const s = 0.40 - (i / SEGMENTS) * 0.16;      // тоньше к хвосту
       const seg = SKULL_GLB ? cloneRealSkull(s).group : createSkull(s);
       ghostify(seg, 0.5 - (i / SEGMENTS) * 0.18);  // прозрачнее к хвосту
+      outlineGroup(seg, addOutline);
       const gl = makeGlowSprite();
       gl.scale.setScalar(1.5 - (i / SEGMENTS) * 0.7);
       gl.position.y = s * 0.5;
