@@ -185,17 +185,21 @@ export class WeaponSystem {
     // Цели (боты) — регистрируются снаружи: [{hitTest(ray)->{point,part,target}|null}]
     this.targets = [];
 
-    // --- Трассеры (пул линий) ---
+    // --- Трассеры (пул билборд-лент: видимая толщина, читаемое направление) ---
     this._tracers = [];
-    const tracerMat = new THREE.LineBasicMaterial({ color: 0xffc860, transparent: true, opacity: 0.9 });
-    const tracerGeo = new THREE.BufferGeometry();
-    tracerGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+    const tracerGeo = new THREE.PlaneGeometry(1, 1);
     for (let i = 0; i < 24; i++) {
-      const line = new THREE.Line(tracerGeo.clone(), tracerMat.clone());
-      line.visible = false;
-      line.frustumCulled = false;
-      scene.add(line);
-      this._tracers.push({ line, life: 0 });
+      const m = new THREE.Mesh(tracerGeo, new THREE.MeshBasicMaterial({
+        color: 0xffe9b0, transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      }));
+      m.visible = false;
+      m.frustumCulled = false;
+      scene.add(m);
+      this._tracers.push({
+        mesh: m, life: 0, max: 0.22, width: 0.032,
+        from: new THREE.Vector3(), to: new THREE.Vector3(),
+      });
     }
 
     // --- Декали-дырки (пул спрайтов) ---
@@ -231,6 +235,9 @@ export class WeaponSystem {
     this._dir = new THREE.Vector3();
     this._ray = new THREE.Ray();
     this._tmp = new THREE.Vector3();
+    this._tmp2 = new THREE.Vector3();
+    this._tmp3 = new THREE.Vector3();
+    this._m4 = new THREE.Matrix4();
     this._muzzleWorld = new THREE.Vector3();
 
     // События
@@ -521,12 +528,14 @@ export class WeaponSystem {
     this.flash.intensity *= Math.pow(0.001, dt * 8);
     this.flashSprite.material.opacity *= Math.pow(0.001, dt * 8);
 
-    // Трассеры
+    // Трассеры: билборд следует за камерой, лента тает и сужается
     for (const t of this._tracers) {
       if (t.life > 0) {
         t.life -= dt;
-        t.line.material.opacity = Math.max(0, t.life / 0.08) * 0.9;
-        if (t.life <= 0) t.line.visible = false;
+        const k = Math.max(0, t.life / t.max);
+        t.mesh.material.opacity = k * 0.95;
+        this._orientTracer(t, 0.4 + 0.6 * k);
+        if (t.life <= 0) t.mesh.visible = false;
       }
     }
     // Декали живут недолго (переиспользуем пул по кругу)
@@ -767,16 +776,35 @@ export class WeaponSystem {
     this._spawnTracer(this._muzzleWorld, endPoint);
   }
 
-  _spawnTracer(from, to) {
+  // Трассер-лента: яркая, живёт 0.22с — направление выстрела читается всегда.
+  // color/width можно переопределить (MP: командный цвет стрелявшего).
+  _spawnTracer(from, to, color = 0xffe9b0, width = 0.032) {
     let best = this._tracers[0];
     for (const t of this._tracers) { if (t.life <= 0) { best = t; break; } }
-    const pos = best.line.geometry.attributes.position;
-    pos.setXYZ(0, from.x, from.y, from.z);
-    pos.setXYZ(1, to.x, to.y, to.z);
-    pos.needsUpdate = true;
-    best.line.visible = true;
-    best.line.material.opacity = 0.9;
-    best.life = 0.08;
+    best.from.copy(from);
+    best.to.copy(to);
+    best.width = width;
+    best.mesh.material.color.setHex(color);
+    best.mesh.material.opacity = 0.95;
+    best.mesh.visible = true;
+    best.life = best.max = 0.22;
+    this._orientTracer(best, 1);
+  }
+
+  // Ориентация ленты: X — вдоль выстрела, плоскость развёрнута к камере
+  _orientTracer(t, widthMul = 1) {
+    const m = t.mesh;
+    m.position.addVectors(t.from, t.to).multiplyScalar(0.5);
+    const x = this._tmp.copy(t.to).sub(t.from);
+    const len = x.length() || 0.001;
+    x.divideScalar(len);
+    this.camera.getWorldPosition(this._tmp2).sub(m.position); // к камере
+    const y = this._tmp3.crossVectors(this._tmp2, x);
+    if (y.lengthSq() < 1e-6) y.set(0, 1, 0); else y.normalize();
+    const z = this._tmp2.crossVectors(x, y).normalize();
+    this._m4.makeBasis(x, y, z);
+    m.quaternion.setFromRotationMatrix(this._m4);
+    m.scale.set(len, t.width * widthMul, 1);
   }
 
   _spawnDecal(point, normal) {

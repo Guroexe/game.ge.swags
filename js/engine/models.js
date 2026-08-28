@@ -74,8 +74,9 @@ export function toonMat(color, opts = {}) {
   toonCache.set(key, m);
   return m;
 }
-const _outlineMat = new THREE.MeshBasicMaterial({ color: 0x0a0a10, side: THREE.BackSide });
-export function addOutline(target, s = 1.05) {
+// Белый контур силуэта: враги читаются на любом фоне (была «аниме-тушь» 0x0a0a10)
+const _outlineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide });
+export function addOutline(target, s = 1.08) {
   const o = new THREE.Mesh(target.geometry, _outlineMat);
   o.scale.setScalar(s);
   o.userData.isOutline = true;
@@ -1131,7 +1132,7 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
   // плавные бёдра
   const pelvis = mesh(sphGeo(0.155, 14, 12), matSuit, 0, -0.02, 0);
   pelvis.scale.set(1.08, 0.78, 0.90);
-  addOutline(pelvis, 1.06);
+  addOutline(pelvis, 1.10);
   hips.add(pelvis);
   // свет-швы боди на бёдрах
   hips.add(mesh(boxGeo(0.016, 0.09, 0.016), matGlowSoft, -0.125, -0.02, 0.095));
@@ -1177,7 +1178,7 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
   ];
   const torsoMesh = new THREE.Mesh(new THREE.LatheGeometry(torsoProfile, 14), matSuit);
   torsoMesh.scale.z = 0.78;
-  addOutline(torsoMesh, 1.05);
+  addOutline(torsoMesh, 1.09);
   torso.add(torsoMesh);
   // грудь — мягкие формы поверх боди
   const bustL = mesh(sphGeo(0.080, 12, 10), matSuit, -0.070, 0.295, 0.090);
@@ -1225,7 +1226,7 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
   torso.add(head);
   const skull = mesh(sphGeo(0.152, 16, 14), matSkin, 0, 0.145, 0.005);
   skull.scale.set(0.92, 1.04, 0.96);
-  addOutline(skull, 1.05);
+  addOutline(skull, 1.08);
   head.add(skull);
   const chin = mesh(sphGeo(0.082, 10, 8), matSkin, 0, 0.038, 0.035);
   chin.scale.set(0.78, 0.60, 0.78);
@@ -1269,6 +1270,7 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
   // Волосы: скальп, чёлка-пряди, пряди у лица, затылочная масса, твинтейлы
   const scalp = mesh(sphGeo(0.163, 14, 12), matHair, 0, 0.168, -0.028);
   scalp.scale.set(0.95, 1.0, 0.98);
+  addOutline(scalp, 1.06);
   head.add(scalp);
   // чёлка — сплюснутые конусы остриём вниз
   const mkBang = (x, z, len, rz, m) => {
@@ -1289,6 +1291,7 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
   // затылочная масса (до лопаток)
   const hairBack = mesh(capGeo(0.075, 0.34, 10), matHairDark, 0, -0.05, -0.135);
   hairBack.scale.set(1.35, 1, 0.5);
+  addOutline(hairBack, 1.07);
   head.add(hairBack);
 
   // Твинтейлы до колен: 5 сегментов-капсул + лента + коготь
@@ -1340,14 +1343,14 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
     shoulder.add(padRing);
     // плечо — капсула боди
     const upper = mesh(capGeo(0.046, 0.20, 8), matSuit, 0, -0.15, 0);
-    addOutline(upper, 1.07);
+    addOutline(upper, 1.11);
     shoulder.add(upper);
     const elbow = new THREE.Group();
     elbow.position.y = -0.31;
     shoulder.add(elbow);
     // предплечье-наруч
     const fore = mesh(capGeo(0.038, 0.18, 8), matDark, 0, -0.12, 0);
-    addOutline(fore, 1.07);
+    addOutline(fore, 1.11);
     elbow.add(fore);
     const ringE = mesh(new THREE.TorusGeometry(0.045, 0.006, 6, 12), matGlow, 0, -0.03, 0);
     ringE.rotation.x = Math.PI / 2;
@@ -1381,7 +1384,7 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
     // бедро
     const thigh = mesh(capGeo(0.070, 0.30, 10), matSkin, 0, -0.22, 0);
     thigh.scale.set(1, 1, 0.92);
-    addOutline(thigh, 1.06);
+    addOutline(thigh, 1.10);
     hip.add(thigh);
     // светящаяся «трещина» на бедре (хоррор-свечение)
     const crack = mesh(boxGeo(0.010, 0.14, 0.008), matGlow, 0.046 * side, -0.20, 0.058);
@@ -1403,13 +1406,15 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
     // голень-гетра
     const shin = mesh(capGeo(0.053, 0.26, 10), matSuit, 0, -0.18, 0);
     shin.scale.set(1, 1, 0.90);
-    addOutline(shin, 1.06);
+    addOutline(shin, 1.10);
     knee.add(shin);
     const kneeRing = mesh(new THREE.TorusGeometry(0.056, 0.007, 6, 12), matGlow, 0, -0.03, 0);
     kneeRing.rotation.x = Math.PI / 2;
     knee.add(kneeRing);
     // бронеботинок
-    knee.add(mesh(cylGeo(0.058, 0.072, 0.20, 10), matArmor, 0, -0.35, 0));
+    const boot = mesh(cylGeo(0.058, 0.072, 0.20, 10), matArmor, 0, -0.35, 0);
+    addOutline(boot, 1.10);
+    knee.add(boot);
     const bootRing = mesh(new THREE.TorusGeometry(0.062, 0.008, 6, 12), matSilver, 0, -0.26, 0);
     bootRing.rotation.x = Math.PI / 2;
     knee.add(bootRing);

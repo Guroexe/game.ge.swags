@@ -700,7 +700,8 @@ class Game {
     this.remotePlayers = new RemotePlayers({
       scene: this.engine.scene, physics: this.physics, sfx: this.sfx, net: this.net,
     });
-    this.remotePlayers.onTracer = (from, to) => this.weapons._spawnTracer(from, to);
+    this.remotePlayers.onTracer = (from, to, color) =>
+      this.weapons._spawnTracer(from, to, color ?? 0xffe9b0, 0.04);
     this.mpMirror = new MPCashMirror(this);
     // Локальный выстрел → на сервер (чужие трассеры/звуки)
     this.weapons.onFire = (origin, dir, kind) => {
