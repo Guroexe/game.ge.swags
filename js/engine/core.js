@@ -37,6 +37,7 @@ uniform float uMandalaN;  // симметрия (число сегментов �
 uniform float uMandalaRot;// накопленный угол вращения (скорость по beatPhase)
 uniform float uMandalaHue;// базовый тон (дрейф + фаза трека)
 uniform float uMandalaZoom;// zoom-пульс на битах
+uniform float uMandalaBass;// бас-драйв сканлайн-слоя (0..1)
 
 // Матрица Байера 4x4
 float bayer4(vec2 p) {
@@ -136,28 +137,50 @@ void main() {
     col = mix(col, psyCol, uPsy * 0.92);
   }
 
-  // --- МАНДАЛА: процедурный калейдоскоп поверх (после psy-палитры, до виньетки) ---
-  // Polar fold экранных UV → кольца/лепестки, HSL-цвет, additive.
+  // --- МАНДАЛА 3.0: многослойный психодел по КРАЯМ экрана (центр чист для прицела) ---
+  // L1: калейдоскоп кольца/лепестки (двойной, контр-вращение) ·
+  // L2: пиксельная сетка — квантованные ячейки со степ-анимацией ·
+  // L3: сканлайн-полосы от баса. Всё аддитивно × краевая маска.
   if (uMandala > 0.001) {
-    vec2 mp = (vUv - 0.5) * (2.2 - clamp(uMandalaZoom, 0.0, 1.5) * 0.4);
-    mp.x *= uResolution.x / max(uResolution.y, 1.0); // круги, не эллипсы
-    float mr = length(mp);
-    float ma = atan(mp.y, mp.x) + uMandalaRot;
-    float seg = 6.2831853 / max(uMandalaN, 3.0);
-    ma = mod(ma, seg);
-    ma = abs(ma - seg * 0.5); // зеркальный fold внутри сегмента
-    float rings = sin(mr * 22.0 - uTime * 1.6 + ma * uMandalaN * 1.5);
-    float petals = cos(ma * uMandalaN * 2.0 + mr * 7.0 - uTime * 0.9);
-    float m = smoothstep(0.35, 0.95, rings * petals * 0.5 + 0.5);
-    m *= smoothstep(0.03, 0.22, mr) * smoothstep(1.5, 0.75, mr); // гашение центра/краёв
-    vec3 mcol = hsl2rgb(vec3(fract(uMandalaHue + ma * uMandalaN * 0.08 + mr * 0.15), 0.85, 0.55));
-    // Второй слой — контр-вращение на другой частоте (глубина DMT-визуала)
-    float rings2 = sin(mr * 34.0 + uTime * 1.1 - ma * uMandalaN * 2.2);
-    float petals2 = cos(ma * uMandalaN * 3.0 - mr * 11.0 + uTime * 1.3);
-    float m2 = smoothstep(0.45, 0.95, rings2 * petals2 * 0.5 + 0.5);
-    m2 *= smoothstep(0.05, 0.30, mr) * smoothstep(1.4, 0.65, mr);
-    vec3 mcol2 = hsl2rgb(vec3(fract(uMandalaHue + 0.5 - ma * uMandalaN * 0.06 - mr * 0.22), 0.9, 0.6));
-    col += (mcol * m + mcol2 * m2 * 0.7) * uMandala * 1.55;
+    // Краевая маска в экранном пространстве: 0 в центре → 1 к краям
+    float edge = smoothstep(0.30, 0.60, dist);
+    if (edge > 0.001) {
+      vec2 mp = (vUv - 0.5) * (2.2 - clamp(uMandalaZoom, 0.0, 1.5) * 0.4);
+      mp.x *= uResolution.x / max(uResolution.y, 1.0); // круги, не эллипсы
+      float mr = length(mp);
+      float ma = atan(mp.y, mp.x) + uMandalaRot;
+      float seg = 6.2831853 / max(uMandalaN, 3.0);
+      ma = mod(ma, seg);
+      ma = abs(ma - seg * 0.5); // зеркальный fold внутри сегмента
+
+      // L1: калейдоскоп (кольца × лепестки) + контр-вращающийся слой
+      float rings = sin(mr * 22.0 - uTime * 1.6 + ma * uMandalaN * 1.5);
+      float petals = cos(ma * uMandalaN * 2.0 + mr * 7.0 - uTime * 0.9);
+      float m1 = smoothstep(0.35, 0.95, rings * petals * 0.5 + 0.5);
+      vec3 mcol1 = hsl2rgb(vec3(fract(uMandalaHue + ma * uMandalaN * 0.08 + mr * 0.15), 0.85, 0.55));
+      float rings2 = sin(mr * 34.0 + uTime * 1.1 - ma * uMandalaN * 2.2);
+      float petals2 = cos(ma * uMandalaN * 3.0 - mr * 11.0 + uTime * 1.3);
+      float m1b = smoothstep(0.45, 0.95, rings2 * petals2 * 0.5 + 0.5);
+      vec3 mcol1b = hsl2rgb(vec3(fract(uMandalaHue + 0.5 - ma * uMandalaN * 0.06 - mr * 0.22), 0.9, 0.6));
+
+      // L2: пиксельная сетка — экран квантуется на ячейки, паттерн шагает
+      // дискретными кадрами (ускоряется на битах/выстрелах через uMandalaZoom)
+      float cells = 42.0 + uMandalaN * 4.0;
+      vec2 cell = floor(gl_FragCoord.xy / max(uResolution.y / cells, 1.0));
+      float tick = floor(uTime * (5.0 + uMandalaZoom * 9.0));
+      float px = hash12(cell + tick * 0.37);
+      float px2 = hash12(cell * 1.71 - tick * 0.23);
+      float m2 = smoothstep(0.60, 0.97, px * px2 * 1.7); // редкие вспыхивающие ячейки
+      vec3 mcol2 = hsl2rgb(vec3(fract(uMandalaHue + px * 0.45 + tick * 0.018), 0.9, 0.58));
+
+      // L3: сканлайн-полосы от баса (тонкие, дышащие)
+      float scan = sin(gl_FragCoord.y * 0.9 + uTime * 3.0);
+      float m3 = smoothstep(0.88, 1.0, scan) * clamp(uMandalaBass, 0.0, 1.0);
+      vec3 mcol3 = hsl2rgb(vec3(fract(uMandalaHue + 0.8), 0.7, 0.5));
+
+      col += (mcol1 * m1 + mcol1b * m1b * 0.7 + mcol2 * m2 * 0.9 + mcol3 * m3 * 0.5)
+        * uMandala * edge * 1.55;
+    }
   }
 
   // Пульс на бите — лёгкая вспышка экспозиции
@@ -295,7 +318,8 @@ export class FXController {
     u.uMandalaN.value = this._mandalaN;
     u.uMandalaRot.value = this._mandalaRot;
     u.uMandalaHue.value = (this._mandalaHue + phase * 0.35) % 1;
-    u.uMandalaZoom.value = this.pulseV; // zoom-пульс на битах
+    u.uMandalaZoom.value = this.pulseV; // zoom-пульс на битах (и выстрелах)
+    u.uMandalaBass.value = Math.max(0, bass - 0.35) * 1.6; // сканлайн-слой от баса
   }
 }
 
@@ -349,6 +373,7 @@ export class Engine {
         uMandalaRot: { value: 0 },
         uMandalaHue: { value: 0.78 },
         uMandalaZoom: { value: 0 },
+        uMandalaBass: { value: 0 },
       },
       depthTest: false, depthWrite: false,
     });

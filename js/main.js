@@ -709,11 +709,14 @@ class Game {
     this.remotePlayers.onTracer = (from, to, color) =>
       this.weapons._spawnTracer(from, to, color ?? 0xffe9b0, 0.04);
     this.mpMirror = new MPCashMirror(this);
-    // Локальный выстрел → на сервер (чужие трассеры/звуки)
+    // Локальный выстрел → на сервер (чужие трассеры/звуки) + вспышка краевой мандалы
     this.weapons.onFire = (origin, dir, kind) => {
       if (this.mpActive) {
         this.net.sendShot([origin.x, origin.y, origin.z], [dir.x, dir.y, dir.z], kind);
       }
+      // Выстрел драйвит психодел по краям: тяжёлые стволы пульсят сильнее
+      const heavy = (kind === 'rocket' || kind === 'gl' || kind === 'awp' || kind === 'shotgun');
+      this.engine.fx.pulse(heavy ? 0.5 : 0.25);
     };
     this._bindNet();
     this._bindChat();
