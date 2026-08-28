@@ -1222,6 +1222,7 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
 
   // --- Голова (аниме: сфера + подбородок, лицо-текстура) ---
   const head = new THREE.Group();
+  head.name = 'cg_head'; // FP-тело прячет голову по имени
   head.position.y = 0.48;
   torso.add(head);
   const skull = mesh(sphGeo(0.152, 16, 14), matSkin, 0, 0.145, 0.005);
@@ -1327,6 +1328,7 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
   // --- Руки: капсулы боди + шипастый наплечник + лезвия-наручи ---
   const makeArm = (side) => {
     const shoulder = new THREE.Group();
+    shoulder.name = side < 0 ? 'cg_armL' : 'cg_armR'; // FP-тело прячет руки по имени
     shoulder.position.set(0.19 * side, 0.40, 0);
     torso.add(shoulder);
     // наплечник-полусфера + 3 шипа
@@ -1680,6 +1682,20 @@ export function createViewmodel(kind = 'rifle') {
   const armR = mesh(boxGeo(0.07, 0.07, 0.3), matArm, 0.05, -0.06, 0.12);
   const armL = mesh(boxGeo(0.07, 0.07, 0.24), matArm, -0.06, -0.05, -0.08);
   group.add(armR, armL);
+  // Сигарета в левой руке (когда оружие одиночное): тлеющий кончик,
+  // подносится ко рту каждые ~15с и после убийства (smokeNow)
+  const cig = new THREE.Group();
+  const cigPaper = mesh(new THREE.CylinderGeometry(0.0055, 0.0055, 0.085, 6), flatMat(0xe8e2d4, { rough: 0.9 }), 0, 0, 0);
+  cigPaper.rotation.x = Math.PI / 2; // вдоль Z (вперёд)
+  const cigFilter = mesh(new THREE.CylinderGeometry(0.0058, 0.0058, 0.02, 6), flatMat(0xc07830, { rough: 0.9 }), 0, 0, 0.034);
+  cigFilter.rotation.x = Math.PI / 2;
+  const cigTip = new THREE.Mesh(new THREE.SphereGeometry(0.007, 6, 5), new THREE.MeshBasicMaterial({ color: 0xff7a20 }));
+  cigTip.position.z = -0.045;
+  cig.add(cigPaper, cigFilter, cigTip);
+  cig.position.set(-0.075, -0.035, -0.16); // между пальцами левой руки
+  cig.rotation.y = 0.25;
+  group.add(cig);
+  const cigHome = { pos: cig.position.clone(), rotY: cig.rotation.y };
   // Правый рукав с ремнями
   const sleeveR = mesh(boxGeo(0.1, 0.1, 0.2), matSleeve, 0.055, -0.055, 0.22);
   group.add(sleeveR);
@@ -1814,11 +1830,23 @@ export function createViewmodel(kind = 'rifle') {
   const st = {
     t: 0, bobPhase: 0, speedF: 0,
     recoil: 0, reloadT: 0, reloadDur: 0, ads: 0,
+    cigT: 0, nextCigAt: 9 + Math.random() * 6, // первая затяжка через 9-15с
+    spr: null, _sprA: null,                    // пружины инерции (лениво)
   };
   // Домашняя поза магазина (upgradeViewmodel может переназначить под магазин glb)
   const magHome = magazine.position.clone();
 
-  function update(dt, { speed = 0, ads = false, grounded = true } = {}) {
+  const _clamp = (v, m) => Math.max(-m, Math.min(m, v));
+  const _smooth = (x) => x * x * (3 - 2 * x);
+
+  function update(dt, opts = {}) {
+    const { speed = 0, ads = false, grounded = true } = opts;
+    // Снять пружинные смещения прошлого кадра (поза пересчитывается каждый кадр)
+    const PA = st._sprA;
+    if (PA) {
+      group.position.x -= PA.px; group.position.y -= PA.py; group.position.z -= PA.pz;
+      group.rotation.x -= PA.rx; group.rotation.y -= PA.ry; group.rotation.z -= PA.rz;
+    }
     st.t += dt;
     const targetAds = ads ? 1 : 0;
     st.ads += (targetAds - st.ads) * Math.min(1, dt * 12);
@@ -1833,14 +1861,6 @@ export function createViewmodel(kind = 'rifle') {
     group.position.x += Math.sin(st.t * 1.4) * 0.0025 * sway;
     group.position.y += Math.sin(st.t * 2.3) * 0.003 * sway;
 
-    // Бег-качание
-    if (grounded) {
-      const bob = st.speedF * (1 - st.ads * 0.7);
-      group.position.x += Math.sin(st.bobPhase) * 0.012 * bob;
-      group.position.y += Math.abs(Math.cos(st.bobPhase)) * 0.014 * bob;
-      group.rotation.z = Math.sin(st.bobPhase) * 0.02 * bob;
-    }
-
     // Отдача
     if (st.recoil > 0) {
       group.position.z += st.recoil * 0.06;
@@ -1848,6 +1868,68 @@ export function createViewmodel(kind = 'rifle') {
       st.recoil = Math.max(0, st.recoil - dt * 6);
     } else {
       group.rotation.x *= 0.8;
+    }
+
+    // --- Инерционная физика рук: оружие отстаёт от камеры на пружинах ---
+    // Входы: скорость поворота камеры (lookV), стрейф, приземление, слайд.
+    // Пружины с лёгким overshoot — «кайфовая» инерция вместо скриптового боба.
+    const S = st.spr || (st.spr = {
+      px: 0, py: 0, pz: 0, pvx: 0, pvy: 0, pvz: 0,
+      rx: 0, ry: 0, rz: 0, rvx: 0, rvy: 0, rvz: 0,
+    });
+    const lagK = 1 - st.ads * 0.78; // в ADS оружие жёстче приклеено к камере
+    const lookVX = opts.lookVX || 0; // рад/с yaw: >0 — поворот вправо
+    const lookVY = opts.lookVY || 0; // рад/с pitch: >0 — взгляд вниз
+    const strafe = opts.strafe || 0; // -1..1
+    const land = opts.land || 0;     // 0..1 импульс приземления
+    let tPx = _clamp(-lookVX * 0.014, 0.07) * lagK + strafe * -0.014 * lagK;
+    let tPy = _clamp(lookVY * 0.011, 0.06) * lagK - land * 0.05 - (grounded ? 0 : 0.006);
+    const tPz = -land * 0.03;
+    let tRx = _clamp(lookVY * 0.045, 0.22) * lagK - land * 0.16;
+    let tRy = _clamp(lookVX * 0.05, 0.25) * lagK;
+    let tRz = strafe * -0.045 * lagK + (opts.sliding ? 0.10 : 0);
+    // Шаги — тоже через пружину (инерция вместо скриптового синуса)
+    if (grounded && st.speedF > 0.01) {
+      const bob = st.speedF * (1 - st.ads * 0.7);
+      tPy += -Math.abs(Math.cos(st.bobPhase)) * 0.011 * bob;
+      tPx += Math.sin(st.bobPhase) * 0.007 * bob;
+      tRz += Math.sin(st.bobPhase) * 0.016 * bob;
+    }
+    // Полу-имплицитная интеграция: позиция резкая (11 Гц), поворот ленивее (8 Гц)
+    const PF = 11, PD = 2 * PF * 0.72;
+    const RF = 8, RD = 2 * RF * 0.70;
+    S.pvx += ((tPx - S.px) * PF * PF - S.pvx * PD) * dt; S.px += S.pvx * dt;
+    S.pvy += ((tPy - S.py) * PF * PF - S.pvy * PD) * dt; S.py += S.pvy * dt;
+    S.pvz += ((tPz - S.pz) * PF * PF - S.pvz * PD) * dt; S.pz += S.pvz * dt;
+    S.rvx += ((tRx - S.rx) * RF * RF - S.rvx * RD) * dt; S.rx += S.rvx * dt;
+    S.rvy += ((tRy - S.ry) * RF * RF - S.rvy * RD) * dt; S.ry += S.rvy * dt;
+    S.rvz += ((tRz - S.rz) * RF * RF - S.rvz * RD) * dt; S.rz += S.rvz * dt;
+    group.position.x += S.px; group.position.y += S.py; group.position.z += S.pz;
+    group.rotation.x += S.rx; group.rotation.y += S.ry; group.rotation.z += S.rz;
+    st._sprA = { px: S.px, py: S.py, pz: S.pz, rx: S.rx, ry: S.ry, rz: S.rz };
+
+    // --- Сигарета: затяжка по таймеру ~15с или по smokeNow() (после килла) ---
+    if (cig.visible) {
+      if (st.cigT <= 0 && st.t > st.nextCigAt) st.cigT = 1.7;
+      if (st.cigT > 0) {
+        st.cigT -= dt;
+        const p = 1 - Math.max(0, st.cigT) / 1.7; // 0..1
+        // поднос ко рту: вверх 0..0.25, затяжка 0.25..0.7, вниз 0.7..1
+        const raise = p < 0.25 ? _smooth(p / 0.25) : p < 0.7 ? 1 : 1 - _smooth((p - 0.7) / 0.3);
+        cig.position.set(
+          cigHome.pos.x + raise * -0.10,
+          cigHome.pos.y + raise * 0.12,
+          cigHome.pos.z + raise * 0.22);
+        cig.rotation.y = cigHome.rotY + raise * 0.5;
+        const drag = p > 0.25 && p < 0.7; // тлеет ярче на затяжке
+        cigTip.material.color.setHex(drag ? 0xffc040 : 0xff7a20);
+        cigTip.scale.setScalar(drag ? 1.5 : 1);
+        if (st.cigT <= 0) {
+          st.nextCigAt = st.t + 13 + Math.random() * 6;
+          cig.position.copy(cigHome.pos);
+          cig.rotation.y = cigHome.rotY;
+        }
+      }
     }
 
     // Перезарядка: УНИКАЛЬНАЯ хореография на ствол (st.reloadStyle):
@@ -1918,7 +2000,37 @@ export function createViewmodel(kind = 'rifle') {
   function startReload(dur, style = 'magflip') { st.reloadT = dur; st.reloadDur = dur; st.reloadStyle = style; }
   function isReloading() { return st.reloadT > 0; }
 
-  const vmApi = { group, muzzle, magazine, bodyParts, magHome, update, kick, startReload, isReloading, st };
+  // Поза покоя/ADS снаружи (akimbo: левый ствол зеркалит позу)
+  function setPose(rx, ry, rz, rotY, ax, ay, az) {
+    restPos.set(rx, ry, rz);
+    if (ax !== undefined) adsPos.set(ax, ay, az);
+    group.rotation.y = rotY;
+  }
+
+  // Затяжка по событию (убийство). Таймерная затяжка не наезжает: после
+  // ручной nextCigAt пересчитается в конце анимации.
+  function smokeNow() {
+    if (!cig.visible) return;
+    if (st.cigT <= 0) st.cigT = 1.7;
+  }
+  // Дым летит только во время самой затяжки (hold-фаза)
+  function isSmoking() {
+    if (!cig.visible || st.cigT <= 0) return false;
+    const p = 1 - st.cigT / 1.7;
+    return p > 0.25 && p < 0.75;
+  }
+  function setCigVisible(v) {
+    if (cig.visible === v) return;
+    cig.visible = v;
+    if (!v) { st.cigT = 0; cig.position.copy(cigHome.pos); cig.rotation.y = cigHome.rotY; }
+    else st.nextCigAt = st.t + 4;
+  }
+
+  const vmApi = {
+    group, muzzle, magazine, bodyParts, magHome, update, kick, startReload, isReloading, st,
+    setPose, smokeNow, isSmoking, setCigVisible, cigTip,
+    cigVisible: () => cig.visible,
+  };
   return vmApi;
 }
 

@@ -61,6 +61,7 @@ export class Player {
     this._dashDir = new THREE.Vector3();
     this.eyeH = EYE_HEIGHT;
     this.bobPhase = 0; this.bobAmp = 0;
+    this.lookVelX = 0; this.lookVelY = 0; // скорость взгляда (рад/с) — пружины viewmodel
     this.baseFov = 75;
     this.fovKick = 0;
     this.recoilPitch = 0; this.recoilYaw = 0; // применяется из weapons
@@ -144,6 +145,9 @@ export class Player {
     const d = inp.consumeLookDelta();
     this.look.yaw -= d.dx;
     this.look.pitch -= d.dy;
+    // Скорость взгляда (рад/с) — вход для инерционных пружин рук
+    this.lookVelX = d.dx / Math.max(dt, 1e-4);
+    this.lookVelY = d.dy / Math.max(dt, 1e-4);
     inp.gyro.applyToCamera(this.look, dt);
     const pitchLim = Math.PI / 2 - 0.01;
     this.look.pitch = Math.max(-pitchLim, Math.min(pitchLim, this.look.pitch));
