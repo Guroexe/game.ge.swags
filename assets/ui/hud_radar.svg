@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="rm" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e8e8f2"/>
+      <stop offset="0.45" stop-color="#8e8ea2"/>
+      <stop offset="0.6" stop-color="#3c3c48"/>
+      <stop offset="1" stop-color="#a8a8bc"/>
+    </linearGradient>
+    <radialGradient id="rglass" cx="0.5" cy="0.45" r="0.7">
+      <stop offset="0" stop-color="#0c0a14" stop-opacity="0.72"/>
+      <stop offset="0.8" stop-color="#080610" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#060410" stop-opacity="0.92"/>
+    </radialGradient>
+  </defs>
+
+  <!-- AB5:;> @040@0 (:0@B0 @8AC5BAO canvas ?>25@E) -->
+  <circle cx="100" cy="100" r="76" fill="url(#rglass)"/>
+
+  <!-- H8?K ?> :>;LFC  ! 2=CB@8 :04@0 -->
+  <g fill="url(#rm)" stroke="#07070c" stroke-width="1.2" stroke-linejoin="round">
+    <path d="M100 6 L106 22 L94 22 Z"/>
+    <path d="M100 194 L94 178 L106 178 Z"/>
+    <path d="M6 100 L22 94 L22 106 Z"/>
+    <path d="M194 100 L178 106 L178 94 Z"/>
+    <path d="M33 33 L46 41 L36 50 Z"/>
+    <path d="M167 33 L164 50 L154 41 Z"/>
+    <path d="M33 167 L36 150 L46 159 Z"/>
+    <path d="M167 167 L154 159 L164 150 Z"/>
+  </g>
+
+  <!-- 42>9=>5 3>B8G5A:>5 :>;LF> -->
+  <circle cx="100" cy="100" r="88" fill="none" stroke="url(#rm)" stroke-width="5"/>
+  <circle cx="100" cy="100" r="88" fill="none" stroke="#07070c" stroke-width="1.2" opacity="0.8"/>
+  <circle cx="100" cy="100" r="79" fill="none" stroke="#ff2d55" stroke-width="1.6" opacity="0.85"/>
+
+  <!-- @8A:8 ?> :><?0AC -->
+  <g stroke="#ff2d55" stroke-width="2.4" opacity="0.9">
+    <path d="M100 14 L100 26"/>
+    <path d="M100 174 L100 186"/>
+    <path d="M14 100 L26 100"/>
+    <path d="M174 100 L186 100"/>
+  </g>
+  <g stroke="#8e8ea2" stroke-width="1.4" opacity="0.7">
+    <path d="M53 41 L61 49"/>
+    <path d="M147 41 L139 49"/>
+    <path d="M53 159 L61 151"/>
+    <path d="M147 159 L139 151"/>
+  </g>
+
+  <!-- <8=8-G5@5? =025@EC -->
+  <g transform="translate(100,30) scale(0.34)">
+    <path d="M0 -24 C-20 -24 -28 -10 -28 2 C-28 12 -23 18 -17 21 L-17 32 L-8 32 L-8 26 L-3 26 L-3 32 L3 32 L3 26 L8 26 L8 32 L17 32 L17 21 C23 18 28 12 28 2 C28 -10 20 -24 0 -24 Z"
+          fill="url(#rm)" stroke="#07070c" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M-17 -3 L-6 -7 L-3 3 L-15 5 Z" fill="#ff2d55"/>
+    <path d="M17 -3 L6 -7 L3 3 L15 5 Z" fill="#ff2d55"/>
+    <path d="M0 7 L-3.5 15 L3.5 15 Z" fill="#0a0a10"/>
+  </g>
+</svg>

@@ -1322,7 +1322,17 @@ export function buildArena(scene, physics, destruction, {
     ring.rotation.x = Math.PI / 2;
     ring.position.y = 0.11;
     g.add(ring);
+    // Световой столб-маяк: пикап видно издалека через всю арену
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.30, 0.42, 7, 10, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: 0xffc860, transparent: true, opacity: 0.14,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      }));
+    beam.position.y = 3.6;
+    g.add(beam);
     const gun = createRealGun(kind);
+    gun.scale.setScalar(1.15); // чуть крупнее — читается силуэт
     gun.position.y = 1.0;
     g.add(gun);
     root.add(g);
@@ -1333,6 +1343,8 @@ export function buildArena(scene, physics, destruction, {
       gun.rotation.y = t * 1.4;
       gun.position.y = 1.0 + Math.sin(t * 2 + x) * 0.08;
       ring.rotation.z = t * 0.8;
+      ring.material.opacity = 0.65 + Math.sin(t * 3.2 + x) * 0.3; // пульс кольца
+      beam.material.opacity = 0.11 + Math.sin(t * 2.4 + x) * 0.05; // дыхание столба
     });
   };
   if (!V.glb) {

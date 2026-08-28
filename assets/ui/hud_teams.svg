@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 170 196">
+  <defs>
+    <linearGradient id="tm" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d8d8e8"/>
+      <stop offset="0.5" stop-color="#7e7e92"/>
+      <stop offset="1" stop-color="#4a4a58"/>
+    </linearGradient>
+    <linearGradient id="tplate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#14101c" stop-opacity="0.88"/>
+      <stop offset="1" stop-color="#0a0810" stop-opacity="0.92"/>
+    </linearGradient>
+  </defs>
+
+  <!-- C3;>2K5 H8?K  2=CB@8 :04@0 -->
+  <g fill="url(#tm)" stroke="#07070c" stroke-width="1.2" stroke-linejoin="round">
+    <path d="M14 4 L30 10 L16 18 Z"/>
+    <path d="M156 4 L154 18 L140 10 Z"/>
+    <path d="M14 192 L16 178 L30 186 Z"/>
+    <path d="M156 192 L140 186 L154 178 Z"/>
+  </g>
+
+  <!-- ?;0AB8=0 A 3>B8G5A:8<8 70>AB@5=8O<8 A25@EC/A=87C -->
+  <path d="M85 12 L100 26 L146 30 L150 92 L146 166 L100 170 L85 184 L70 170 L24 166 L20 92 L24 30 L70 26 Z"
+        fill="url(#tplate)" stroke="url(#tm)" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M85 12 L100 26 L146 30 L150 92 L146 166 L100 170 L85 184 L70 170 L24 166 L20 92 L24 30 L70 26 Z"
+        fill="none" stroke="#07070c" stroke-width="1" opacity="0.7"/>
+
+  <!-- <0;8=>20O :@><:0 -->
+  <path d="M28 34 L142 34 M28 162 L142 162" stroke="#ff2d55" stroke-width="1.6" opacity="0.75"/>
+
+  <!-- B@8 ?;0=:8 A;>B>2 (AB@>:8 B8<<59B>2 @8ACNBAO ?>25@E) -->
+  <g fill="#1a1424" stroke="#3a2a44" stroke-width="1">
+    <rect x="30" y="48" width="110" height="26" rx="2"/>
+    <rect x="30" y="86" width="110" height="26" rx="2"/>
+    <rect x="30" y="124" width="110" height="26" rx="2"/>
+  </g>
+  <g fill="#ff2d55" opacity="0.9">
+    <rect x="30" y="48" width="4" height="26"/>
+    <rect x="30" y="86" width="4" height="26"/>
+    <rect x="30" y="124" width="4" height="26"/>
+  </g>
+
+  <!-- <8=8-G5@5? 2 H0?:5 -->
+  <g transform="translate(85,24) scale(0.2)">
+    <path d="M0 -24 C-20 -24 -28 -10 -28 2 C-28 12 -23 18 -17 21 L-17 32 L-8 32 L-8 26 L-3 26 L-3 32 L3 32 L3 26 L8 26 L8 32 L17 32 L17 21 C23 18 28 12 28 2 C28 -10 20 -24 0 -24 Z"
+          fill="url(#tm)" stroke="#07070c" stroke-width="2"/>
+    <path d="M-17 -3 L-6 -7 L-3 3 L-15 5 Z" fill="#ff2d55"/>
+    <path d="M17 -3 L6 -7 L3 3 L15 5 Z" fill="#ff2d55"/>
+  </g>
+</svg>
