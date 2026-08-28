@@ -1285,8 +1285,14 @@ export function buildArena(scene, physics, destruction, {
     });
   };
   if (!V.glb) {
+    // Y — лучом вниз по физике: пикап встаёт НА поверхность (пол/блок/платформа),
+    // а не внутрь геометрии
+    const downRay = new THREE.Vector3(0, -1, 0);
+    const fromV = new THREE.Vector3();
     for (const pd of (V.pickups || DEFAULT_PICKUPS)) {
-      addWeaponPickup(pd.x * K, (pd.y || 0), pd.z * K, pd.kind);
+      const px = pd.x * K, pz = pd.z * K;
+      const hit = physics.raycast(fromV.set(px, 30, pz), downRay, 60);
+      addWeaponPickup(px, hit ? hit.point.y : 0, pz, pd.kind);
     }
   }
 

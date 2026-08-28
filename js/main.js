@@ -994,7 +994,7 @@ class Game {
       }
       if (!this.player?.alive || !pp) continue;
       const dx = pp.x - p.pos.x, dz = pp.z - p.pos.z;
-      if (dx * dx + dz * dz < 1.6 * 1.6 && Math.abs(pp.y - p.pos.y) < 2.2) {
+      if (dx * dx + dz * dz < 1.6 * 1.6 && Math.abs(pp.y - p.pos.y) < 2.6) {
         p.available = false;
         p.respawnT = 20;
         p.root.visible = false;

@@ -90,7 +90,10 @@ export class Input {
 
   requestPointerLock() {
     if (!this.isTouch && document.pointerLockElement !== this.canvas) {
-      this.canvas.requestPointerLock?.();
+      // Chrome возвращает Promise: без пользовательского жеста — reject
+      // (NotAllowedError). Глушим, чтобы не засорять консоль/диагностику.
+      const p = this.canvas.requestPointerLock?.();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
     }
   }
   exitPointerLock() { document.exitPointerLock?.(); }

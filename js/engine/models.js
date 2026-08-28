@@ -1680,22 +1680,28 @@ export function createViewmodel(kind = 'rifle') {
   const matSleeve = flatMat(0x3a3f4a, { rough: 0.85, metal: 0.1 });
   const matStrap = flatMat(0x1c1e24, { rough: 0.9 });
   const armR = mesh(boxGeo(0.07, 0.07, 0.3), matArm, 0.05, -0.06, 0.12);
-  const armL = mesh(boxGeo(0.07, 0.07, 0.24), matArm, -0.06, -0.05, -0.08);
-  group.add(armR, armL);
-  // Сигарета в левой руке (когда оружие одиночное): тлеющий кончик,
-  // подносится ко рту каждые ~15с и после убийства (smokeNow)
+  group.add(armR);
+  // Левая рука — отдельная группа: на затяжке поднимается ко рту вместе
+  // с сигаретой (иначе сигарета теряется за корпусом оружия)
+  const armLGroup = new THREE.Group();
+  armLGroup.position.set(-0.06, -0.05, -0.08); // домашняя поза левой руки
+  const armLHome = armLGroup.position.clone();
+  const armL = mesh(boxGeo(0.07, 0.07, 0.24), matArm, 0, 0, 0);
+  armLGroup.add(armL);
+  group.add(armLGroup);
+  // Сигарета между пальцами: тлеющий кончик, затяжка каждые ~15с и после
+  // убийства (smokeNow)
   const cig = new THREE.Group();
-  const cigPaper = mesh(new THREE.CylinderGeometry(0.0055, 0.0055, 0.085, 6), flatMat(0xe8e2d4, { rough: 0.9 }), 0, 0, 0);
+  const cigPaper = mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.11, 6), flatMat(0xe8e2d4, { rough: 0.9 }), 0, 0, 0);
   cigPaper.rotation.x = Math.PI / 2; // вдоль Z (вперёд)
-  const cigFilter = mesh(new THREE.CylinderGeometry(0.0058, 0.0058, 0.02, 6), flatMat(0xc07830, { rough: 0.9 }), 0, 0, 0.034);
+  const cigFilter = mesh(new THREE.CylinderGeometry(0.0074, 0.0074, 0.026, 6), flatMat(0xc07830, { rough: 0.9 }), 0, 0, 0.044);
   cigFilter.rotation.x = Math.PI / 2;
-  const cigTip = new THREE.Mesh(new THREE.SphereGeometry(0.007, 6, 5), new THREE.MeshBasicMaterial({ color: 0xff7a20 }));
-  cigTip.position.z = -0.045;
+  const cigTip = new THREE.Mesh(new THREE.SphereGeometry(0.009, 6, 5), new THREE.MeshBasicMaterial({ color: 0xff7a20 }));
+  cigTip.position.z = -0.058;
   cig.add(cigPaper, cigFilter, cigTip);
-  cig.position.set(-0.075, -0.035, -0.16); // между пальцами левой руки
+  cig.position.set(-0.02, 0.03, -0.10);
   cig.rotation.y = 0.25;
-  group.add(cig);
-  const cigHome = { pos: cig.position.clone(), rotY: cig.rotation.y };
+  armLGroup.add(cig);
   // Правый рукав с ремнями
   const sleeveR = mesh(boxGeo(0.1, 0.1, 0.2), matSleeve, 0.055, -0.055, 0.22);
   group.add(sleeveR);
@@ -1703,9 +1709,9 @@ export function createViewmodel(kind = 'rifle') {
     group.add(mesh(boxGeo(0.108, 0.108, 0.018), matStrap, 0.055, -0.055, 0.16 + i * 0.05));
     group.add(mesh(boxGeo(0.02, 0.02, 0.02), flatMat(PALETTE.mechSilver, { metal: 0.8, rough: 0.3 }), 0.055, -0.11, 0.16 + i * 0.05));
   }
-  // Левый рукав с одним ремнём
-  group.add(mesh(boxGeo(0.095, 0.095, 0.12), matSleeve, -0.06, -0.05, -0.02));
-  group.add(mesh(boxGeo(0.1, 0.1, 0.018), matStrap, -0.06, -0.05, -0.02));
+  // Левый рукав с одним ремнём — в группе левой руки (поднимается с ней)
+  armLGroup.add(mesh(boxGeo(0.095, 0.095, 0.12), matSleeve, 0, 0, 0.06));
+  armLGroup.add(mesh(boxGeo(0.1, 0.1, 0.018), matStrap, 0, 0, 0.06));
 
   let muzzle, magazine;
   // Корпусные меши (заменяются скачанным бластером в upgradeViewmodel)
@@ -1916,18 +1922,20 @@ export function createViewmodel(kind = 'rifle') {
         const p = 1 - Math.max(0, st.cigT) / 1.7; // 0..1
         // поднос ко рту: вверх 0..0.25, затяжка 0.25..0.7, вниз 0.7..1
         const raise = p < 0.25 ? _smooth(p / 0.25) : p < 0.7 ? 1 : 1 - _smooth((p - 0.7) / 0.3);
-        cig.position.set(
-          cigHome.pos.x + raise * -0.10,
-          cigHome.pos.y + raise * 0.12,
-          cigHome.pos.z + raise * 0.22);
-        cig.rotation.y = cigHome.rotY + raise * 0.5;
+        // Левая рука с сигаретой поднимается ко рту (к центру и вверх)
+        armLGroup.position.set(
+          armLHome.x + raise * -0.11,
+          armLHome.y + raise * 0.115,
+          armLHome.z + raise * 0.17);
+        armLGroup.rotation.x = raise * -0.55;
+        armLGroup.rotation.y = raise * 0.35;
         const drag = p > 0.25 && p < 0.7; // тлеет ярче на затяжке
         cigTip.material.color.setHex(drag ? 0xffc040 : 0xff7a20);
-        cigTip.scale.setScalar(drag ? 1.5 : 1);
+        cigTip.scale.setScalar(drag ? 1.6 : 1);
         if (st.cigT <= 0) {
           st.nextCigAt = st.t + 13 + Math.random() * 6;
-          cig.position.copy(cigHome.pos);
-          cig.rotation.y = cigHome.rotY;
+          armLGroup.position.copy(armLHome);
+          armLGroup.rotation.set(0, 0, 0);
         }
       }
     }
@@ -2022,8 +2030,11 @@ export function createViewmodel(kind = 'rifle') {
   function setCigVisible(v) {
     if (cig.visible === v) return;
     cig.visible = v;
-    if (!v) { st.cigT = 0; cig.position.copy(cigHome.pos); cig.rotation.y = cigHome.rotY; }
-    else st.nextCigAt = st.t + 4;
+    if (!v) {
+      st.cigT = 0;
+      armLGroup.position.copy(armLHome);
+      armLGroup.rotation.set(0, 0, 0);
+    } else st.nextCigAt = st.t + 4;
   }
 
   const vmApi = {

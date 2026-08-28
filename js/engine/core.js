@@ -505,6 +505,7 @@ export class Engine {
     if (this._running) return;
     this._running = true;
     this._last = performance.now();
+    let loopErrShown = false;
     const loop = (now) => {
       if (!this._running) return;
       requestAnimationFrame(loop);
@@ -513,16 +514,25 @@ export class Engine {
       if (frame > 0.25) frame = 0.25; // защита от спирали
       this._autoQuality(frame);
       this._accum += frame;
-      // Фиксированный шаг симуляции
+      // Фиксированный шаг симуляции. try/catch: ошибка кадра не должна
+      // останавливать симуляцию навсегда (иначе «замороженная» игра).
       let steps = 0;
       while (this._accum >= this.fixedDt && steps < 5) {
         this.time += this.fixedDt;
-        for (const cb of this._updateCbs) cb(this.fixedDt);
+        try {
+          for (const cb of this._updateCbs) cb(this.fixedDt);
+        } catch (e) {
+          if (!loopErrShown) { loopErrShown = true; console.error('[engine] update cb error:', e); }
+        }
         this._accum -= this.fixedDt;
         steps++;
       }
-      for (const cb of this._renderCbs) cb(frame);
-      this.render();
+      try {
+        for (const cb of this._renderCbs) cb(frame);
+        this.render();
+      } catch (e) {
+        if (!loopErrShown) { loopErrShown = true; console.error('[engine] render error:', e); }
+      }
     };
     requestAnimationFrame(loop);
   }
