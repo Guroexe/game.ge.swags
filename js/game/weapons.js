@@ -130,6 +130,7 @@ export class WeaponSystem {
     // Akimbo (пикап на арене): второй такой же ствол в левой руке
     this.dual = null;          // { vm } — левая viewmodel
     this._dualHand = false;    // чья очередь стрелять (чередование)
+    this._skinAccent = null;   // акцент свет-швов рук (скин команды)
 
     // --- Дым сигареты (пул спрайтов, мировые координаты) ---
     this._smokePool = [];
@@ -344,6 +345,13 @@ export class WeaponSystem {
   // Магазин с учётом akimbo (две руки — двойной боекомплект)
   get magSize() { return this.weapon.def.mag * (this.dual ? 2 : 1); }
 
+  // Акцент свет-швов рук под скин команды (из меню настроек)
+  setSkinAccent(hex) {
+    this._skinAccent = hex;
+    for (const s of this.slots) s.vm.setAccent?.(hex);
+    if (this.dual) this.dual.vm.setAccent?.(hex);
+  }
+
   // Akimbo вкл/выкл: вторая зеркальная viewmodel в левой руке
   setDual(on) {
     if (on === !!this.dual) return;
@@ -352,6 +360,7 @@ export class WeaponSystem {
       const vm = createViewmodel(w.def.vm);
       vm.setPose(-0.24, -0.21, -0.42, -0.05, -0.10, -0.16, -0.35); // левая поза
       vm.setCigVisible?.(false); // в левой руке ствол, а не сигарета
+      if (this._skinAccent != null) vm.setAccent?.(this._skinAccent);
       this.camera.add(vm.group);
       upgradeViewmodel(vm, w.def.vm).catch((e) => console.warn('[weapons] dual GLB fail', e));
       this.dual = { vm };

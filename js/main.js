@@ -1643,6 +1643,9 @@ class Game {
     this.menu?.hideDeath();
     this._endSoulCam?.();
     this.menu?.apply?.(); // боевой комплект: стартовый ствол + скин своей команды
+    // Акцент свет-швов рук viewmodel — под скин команды (c1 РОНИН/c2 КУКЛА/c3 ПУСТАЯ)
+    const SKIN_ACCENT = { c1: 0xff2d55, c2: 0xa05cff, c3: 0x9adfff };
+    this.weapons?.setSkinAccent?.(SKIN_ACCENT[this.menu?.settings?.skin] ?? 0xff2d55);
     // Скин применяется к моделям при создании — если выбор сменился, пересоздаём ботов
     const wantSkin = this.menu?.settings?.skin;
     if (this.botsManager && wantSkin !== this.botsManager._skinApplied) {
