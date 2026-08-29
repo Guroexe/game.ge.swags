@@ -1777,33 +1777,33 @@ export function createViewmodel(kind = 'rifle') {
   // Левая рука — отдельная группа: на затяжке поднимается ко рту вместе
   // с сигаретой (иначе сигарета теряется за корпусом оружия)
   const armLGroup = new THREE.Group();
-  armLGroup.position.set(-0.10, -0.075, -0.06); // левее/ниже: кисть читается сбоку ствола
+  armLGroup.position.set(-0.115, -0.085, -0.05); // левее/ниже: кисть с сигаретой явно в кадре
   const armLHome = armLGroup.position.clone();
   const armL = createCyberArm({ side: -1, accent: PALETTE.crimson, cig: true });
-  armL.group.rotation.y = 0.35; // кисть чуть наружу — сигарета на виду
+  armL.group.rotation.y = 0.5; // кисть наружу — сигарета на виду
   armLGroup.add(armL.group);
   accentMats.push(...armL.accentMats);
   group.add(armLGroup);
   // Сигарета между пальцами левой руки: тлеющий кончик с огоньком-спрайтом,
   // затяжка каждые ~15с и после убийства (smokeNow)
   const cig = new THREE.Group();
-  const cigPaper = mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.11, 6), flatMat(0xe8e2d4, { rough: 0.9 }), 0, 0, 0);
+  const cigPaper = mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.14, 6), flatMat(0xe8e2d4, { rough: 0.9 }), 0, 0, 0);
   cigPaper.rotation.x = Math.PI / 2; // вдоль Z (вперёд)
-  const cigFilter = mesh(new THREE.CylinderGeometry(0.0074, 0.0074, 0.026, 6), flatMat(0xc07830, { rough: 0.9 }), 0, 0, 0.044);
+  const cigFilter = mesh(new THREE.CylinderGeometry(0.0095, 0.0095, 0.032, 6), flatMat(0xc07830, { rough: 0.9 }), 0, 0, 0.056);
   cigFilter.rotation.x = Math.PI / 2;
-  const cigTip = new THREE.Mesh(new THREE.SphereGeometry(0.009, 6, 5), new THREE.MeshBasicMaterial({ color: 0xff7a20 }));
-  cigTip.position.z = -0.058;
-  // Огонёк тления — мелкий additive-спрайт (пульс), чтобы сигарета читалась всегда
+  const cigTip = new THREE.Mesh(new THREE.SphereGeometry(0.011, 6, 5), new THREE.MeshBasicMaterial({ color: 0xff7a20 }));
+  cigTip.position.z = -0.072;
+  // Огонёк тления — additive-спрайт (пульс), чтобы сигарета читалась всегда
   const emberGlow = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: createGlowDotTexture(), color: 0xff8a30, transparent: true, opacity: 0.85,
+    map: createGlowDotTexture(), color: 0xff8a30, transparent: true, opacity: 0.95,
     blending: THREE.AdditiveBlending, depthWrite: false,
   }));
-  emberGlow.scale.setScalar(0.022);
-  emberGlow.position.z = -0.058;
+  emberGlow.scale.setScalar(0.038);
+  emberGlow.position.z = -0.072;
   cig.add(cigPaper, cigFilter, cigTip, emberGlow);
-  cig.position.set(0, 0.004, -0.062); // между указательным и средним пальцами
-  cig.rotation.y = -0.12;
-  cig.rotation.x = -0.1;
+  cig.position.set(0, 0.006, -0.07); // между указательным и средним пальцами
+  cig.rotation.y = -0.18;
+  cig.rotation.x = -0.12;
   armL.group.add(cig); // в кисти левой руки — видна всегда, когда оружие одиночное
 
   let muzzle, magazine;
