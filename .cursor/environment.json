@@ -1,0 +1,16 @@
+{
+  "name": "gen.swags",
+  "install": "npm install",
+  "terminals": [
+    {
+      "name": "game server",
+      "command": "node server/start.js",
+      "description": "Serves the game over HTTP (:8080) and HTTPS (:8343) and runs the multiplayer WebSocket server (:7777)."
+    }
+  ],
+  "ports": [
+    { "name": "game (HTTP)", "port": 8080 },
+    { "name": "game (HTTPS)", "port": 8343 },
+    { "name": "multiplayer (WS)", "port": 7777 }
+  ]
+}
