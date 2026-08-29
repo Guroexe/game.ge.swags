@@ -587,7 +587,8 @@ class Game {
       };
     }
 
-    // Змея-череп HYPER DEMON: неуязвимый преследующий NPC (соло only)
+    // Змея-череп HYPER DEMON: хрупкий преследующий NPC (соло only), 40 HP,
+    // респавн 8–12с в случайной точке
     this.skullSwarm = new SkullSwarm({
       scene: this.engine.scene, sfx: this.sfx, gore: this.weapons.gore,
       physics: this.physics,
@@ -597,6 +598,7 @@ class Game {
       this.flow?.registerKill?.();
       this._rhythmAction?.('kill');
       this._registerChainKill(); // череп тоже идёт в цепочку
+      this.weapons?.weapon?.vm.smokeNow?.(); // затяжка после килла
       if (skull?.pos) this.weapons?.gore?.gib({ x: skull.pos.x, y: skull.pos.y, z: skull.pos.z }, null, 3);
     };
 
@@ -605,6 +607,10 @@ class Game {
 
     // Оружие → события
     this.weapons.onKill = (bot, opts) => {
+      // Змея-череп (team -99) — свой обработчик skullSwarm.onKill (киллфид,
+      // цепочка, гибсы); здесь не считаем, чтобы не было дабл-каунта
+      if (bot.team === -99) return;
+      this.weapons.weapon?.vm.smokeNow?.(); // затяжка после килла
       this.hud?.killFeed(`ВЫ УНИЧТОЖИЛИ ${bot.name}`);
       const mult = this.flow.registerKill(); // килл на бите = ×2 FLOW (внутри)
       if (mult > 1) this.hud?.notify('КИЛЛ НА БИТЕ ×2 FLOW', 'drop');
@@ -700,13 +706,17 @@ class Game {
     this.remotePlayers = new RemotePlayers({
       scene: this.engine.scene, physics: this.physics, sfx: this.sfx, net: this.net,
     });
-    this.remotePlayers.onTracer = (from, to) => this.weapons._spawnTracer(from, to);
+    this.remotePlayers.onTracer = (from, to, color) =>
+      this.weapons._spawnTracer(from, to, color ?? 0xffe9b0, 0.04);
     this.mpMirror = new MPCashMirror(this);
-    // Локальный выстрел → на сервер (чужие трассеры/звуки)
+    // Локальный выстрел → на сервер (чужие трассеры/звуки) + вспышка краевой мандалы
     this.weapons.onFire = (origin, dir, kind) => {
       if (this.mpActive) {
         this.net.sendShot([origin.x, origin.y, origin.z], [dir.x, dir.y, dir.z], kind);
       }
+      // Выстрел драйвит психодел по краям: тяжёлые стволы пульсят сильнее
+      const heavy = (kind === 'rocket' || kind === 'gl' || kind === 'awp' || kind === 'shotgun');
+      this.engine.fx.pulse(heavy ? 0.5 : 0.25);
     };
     this._bindNet();
     this._bindChat();
@@ -971,6 +981,66 @@ class Game {
     box.rotation.set(0, -(this.player.look.yaw || 0), 0);
   }
 
+  // ---------- Пикапы оружия (соло): подход = akimbo этого ствола ----------
+  _updateWeaponPickups(dt) {
+    const list = this.arena?.weaponPickups;
+    if (!list?.length || this.mpActive) return;
+    const pp = this.player?.body.pos;
+    for (const p of list) {
+      if (!p.available) {
+        p.respawnT -= dt;
+        if (p.respawnT <= 0) { p.available = true; p.root.visible = true; }
+        continue;
+      }
+      if (!this.player?.alive || !pp) continue;
+      const dx = pp.x - p.pos.x, dz = pp.z - p.pos.z;
+      if (dx * dx + dz * dz < 1.6 * 1.6 && Math.abs(pp.y - p.pos.y) < 2.6) {
+        p.available = false;
+        p.respawnT = 20;
+        p.root.visible = false;
+        this.weapons.forceLoadout(p.kind, { dual: true });
+        this.hud?.notify(`AKIMBO: ${this.weapons.weapon.def.name} ×2`, 'good');
+        this.sfx?.weaponChange?.();
+        this.engine.fx.pulse(0.8);
+      }
+    }
+  }
+
+  // ---------- Тело от первого лица: торс/ноги при взгляде вниз, слайде, прыжке ----------
+  _ensureFPBody() {
+    const skin = this.menu?.settings?.skin || 'c1';
+    if (this._fpBody && this._fpBodySkin === skin) return;
+    if (this._fpBody) { this.engine.scene.remove(this._fpBody.root); this._fpBody = null; }
+    const team = this.mode?.playerTeam ?? 0;
+    const inst = instantiateGirl(skin, { team }) || createCyberGirl({ team });
+    // Прячем голову и руки: из первого лица видны только торс/ноги
+    // (процедурная — по именам групп; GLB — схлопыванием костей рук/головы)
+    inst.root.traverse((o) => {
+      if (o.name === 'cg_head' || o.name === 'cg_armL' || o.name === 'cg_armR') o.visible = false;
+      if (o.isBone && /(left|right)(shoulder|arm|forearm|hand)$/i.test(o.name)) o.scale.setScalar(0.001);
+      if (o.isBone && /head$/i.test(o.name)) o.scale.setScalar(0.001);
+    });
+    inst.root.visible = false;
+    this.engine.scene.add(inst.root);
+    this._fpBody = inst;
+    this._fpBodySkin = skin;
+  }
+
+  _updateFPBody(dt) {
+    const fp = this._fpBody;
+    if (!fp) return;
+    const p = this.player;
+    const show = !!p?.alive && !this.matchEnded
+      && (p.look.pitch < -0.45 || p.sliding || !p.onGround);
+    fp.root.visible = show;
+    if (!show) return;
+    fp.root.position.set(p.body.pos.x, p.body.pos.y, p.body.pos.z);
+    fp.root.rotation.y = p.look.yaw + Math.PI; // модель смотрит в +Z — разворот по взгляду
+    fp.update(dt, p.speed);
+    fp.setMode?.(p.onGround ? (p.speed > 0.5 ? 'run' : 'idle') : 'jump');
+    if (fp.state) fp.state.crouchTarget = p.sliding ? 1 : p.crouching ? 0.6 : 0;
+  }
+
   // Джамп-пады: мощный вертикальный подброс (The Finals)
   _updateJumpPads() {
     const pads = this.arena?.jumpPads;
@@ -1058,6 +1128,9 @@ class Game {
     this._mpRespawnT = 0;
     // Ботов в MP нет — прячем модели (соло восстановится при выходе)
     for (const b of this.botsManager?.bots || []) b.root.visible = false;
+    // Пикапы оружия — только соло (в MP лута авторитетен серверу, поддержки нет)
+    for (const p of this.arena?.weaponPickups || []) p.root.visible = false;
+    if (this._fpBody) this._fpBody.root.visible = false;
     this.weapons.mpMode = true;
     if (this.rhythm?.groove) this.rhythm.groove.mpMode = true; // MP: сервер авторитетен по урону, groove — только визуал/движение
     this.remotePlayers.syncRoster(msg.players || [...this.net.remote.values()]);
@@ -1097,6 +1170,8 @@ class Game {
     this.remotePlayers.clear();
     this._refreshTargets();
     this.weapons.mpMode = false;
+    // Пикапы оружия возвращаются (соло)
+    for (const p of this.arena?.weaponPickups || []) p.root.visible = p.available;
     if (this.rhythm?.groove) this.rhythm.groove.mpMode = false;
     for (const b of this.botsManager?.bots || []) b.root.visible = true;
     if (this.mode) {
@@ -1574,6 +1649,7 @@ class Game {
     if (this.mode) this.mode.playerTeam = myTeam;
     const sp = this.arena.spawns[myTeam % this.arena.spawns.length];
     this.player.spawn(sp.pos, sp.yaw);
+    if (!this.mpActive) this._ensureFPBody(); // тело от первого лица (соло)
     // Респавн = ОДИН случайный ствол из арсенала (10 стволов)
     const startKind = this.weapons?.randomizeLoadout?.();
     if (startKind) this.hud?.notify(`СТВОЛ: ${this.weapons.weapon.def.name}`, 'obj');
@@ -1654,6 +1730,7 @@ class Game {
     this.menu?.closePause();
     this.menu?.hideEnd();
     this.menu?.hideDeath();
+    if (this._fpBody) this._fpBody.root.visible = false;
     this.input.exitPointerLock();
     this._setState(State.MENU);
     this.menu?.showPage('main');
@@ -1737,6 +1814,8 @@ class Game {
         this.skullSwarm?.update(wdt, this.player, this.botsManager?.bots);
         this.mode?.update(wdt);
         this._updateCarryVisual(wdt); // кешбокс в руках перед камерой
+        this._updateWeaponPickups(wdt); // пикапы оружия → akimbo
+        this._updateFPBody(wdt);      // тело от первого лица
       }
       this.flow.update(wdt, { moveSpeed: this.player.alive ? this.player.speed : 0 });
       if (this.flow.value > (this.flow.maxSeen || 0)) this.flow.maxSeen = this.flow.value;

@@ -6,12 +6,24 @@
 import * as THREE from 'three';
 import { activeGroove } from './rhythm.js';
 
-const WALK_SPEED = 6.0;
-const SPRINT_SPEED = 8.5;
+const WALK_SPEED = 7.0;
+const SPRINT_SPEED = 9.5;
 const GROUND_ACCEL = 60;
 const AIR_ACCEL = 18;
 const FRICTION = 8;
 const JUMP_VEL = 8.2;
+// Моментум: bhop/слайд/wall-run без ударов о стены разгоняют до ×2.3 от спринта
+const MOMENTUM_MAX_BOOST = 1.3;
+const MOMENTUM_BHOP = 0.18;    // прыжок сразу после приземления
+const MOMENTUM_SLIDE = 0.12;   // вход в подкат
+const MOMENTUM_AIR = 0.05;     // чистый полёт, в сек
+const MOMENTUM_WALLRUN = 0.12; // бег по стене, в сек
+const MOMENTUM_HITWALL = 0.3;  // множитель при ударе о стену (сильный слив)
+// Бег по стенам
+const WALLRUN_MIN_SPEED = 4;
+const WALLRUN_TIME = 1.5;
+const WALLRUN_GRAVITY = 0.25;
+const WALLJUMP_PUSH = 6.5;
 const DASH_SPEED = 14;
 const DASH_TIME = 0.18;
 const DASH_CD = 2.2;
@@ -49,6 +61,7 @@ export class Player {
     this._dashDir = new THREE.Vector3();
     this.eyeH = EYE_HEIGHT;
     this.bobPhase = 0; this.bobAmp = 0;
+    this.lookVelX = 0; this.lookVelY = 0; // скорость взгляда (рад/с) — пружины viewmodel
     this.baseFov = 75;
     this.fovKick = 0;
     this.recoilPitch = 0; this.recoilYaw = 0; // применяется из weapons
@@ -87,6 +100,12 @@ export class Player {
     this._vaultCd = 0; this._mantleAnim = 0;
     this.hitKick = 0; this.crouching = false; this.weaponMoveMul = 1;
     this.arenaHalf = 40; // радиус арены (main выставляет при rebuildArena)
+
+    // Моментум (скорость за чистое перемещение) и бег по стенам
+    this.momentum = 0;
+    this._justLanded = 0;      // окно bhop после приземления
+    this.wallRun = { active: false, side: 0, normal: new THREE.Vector3(), t: 0 };
+    this._wallRunCd = 0;       // пауза после wall-jump (нет мгновенного переприлипания)
   }
 
   get position() { return this.body.pos; }
@@ -101,6 +120,8 @@ export class Player {
     this.look.yaw = yaw; this.look.pitch = 0;
     this.hp = this.maxHp; this.alive = true;
     this.dashCd = 0; this.dashT = 0; this.sliding = false;
+    this.momentum = 0; this._justLanded = 0;
+    this.wallRun.active = false; this.wallRun.side = 0; this._wallRunCd = 0;
   }
 
   damage(amount) {
@@ -124,6 +145,9 @@ export class Player {
     const d = inp.consumeLookDelta();
     this.look.yaw -= d.dx;
     this.look.pitch -= d.dy;
+    // Скорость взгляда (рад/с) — вход для инерционных пружин рук
+    this.lookVelX = d.dx / Math.max(dt, 1e-4);
+    this.lookVelY = d.dy / Math.max(dt, 1e-4);
     inp.gyro.applyToCamera(this.look, dt);
     const pitchLim = Math.PI / 2 - 0.01;
     this.look.pitch = Math.max(-pitchLim, Math.min(pitchLim, this.look.pitch));
@@ -214,6 +238,7 @@ export class Player {
     if (slideDown && !this._slideWasDown && this.onGround && this.speed > 5.5 && this.sprinting && !this.sliding) {
       this.sliding = true;
       this._slideT = SLIDE_TIME;
+      this.momentum = Math.min(1, this.momentum + MOMENTUM_SLIDE); // подкат разгоняет
       this.sfx?.slide();
       this.onSlide?.();
     }
@@ -225,15 +250,34 @@ export class Player {
     // Присед: удерживаем Ctrl/C на месте или в медленном движении (не в подкате)
     this.crouching = !this.sliding && slideDown && this.onGround && this.speed <= 5.5;
 
-    // --- Прыжки (буфер + двойной) ---
+    // --- Бег по стенам: детект до прыжков (wall-jump перехватывает прыжок) ---
+    this._updateWallRun(dt);
+
+    // --- Прыжки (буфер + двойной + от стены) ---
     if (jumpDown && !this._jumpWasDown) this._lastJumpPressed = 0.12;
     this._jumpWasDown = jumpDown;
     if (this._lastJumpPressed > 0) {
       this._lastJumpPressed -= dt;
-      if (this.onGround) {
+      if (this.wallRun.active) {
+        // Отпрыгивание от стены: по нормали + вверх, моментум сохраняется и растёт
+        const n = this.wallRun.normal;
+        body.vel.x += n.x * WALLJUMP_PUSH;
+        body.vel.z += n.z * WALLJUMP_PUSH;
+        body.vel.y = JUMP_VEL * 0.95;
+        this.wallRun.active = false; this.wallRun.side = 0;
+        this._wallRunCd = 0.3;
+        this._lastJumpPressed = 0;
+        this.momentum = Math.min(1, this.momentum + 0.10);
+        this.sfx?.jump();
+        this.onJump?.(false);
+        this.fovKick = Math.min(this.fovKick + 6, 14);
+      } else if (this.onGround) {
         body.vel.y = JUMP_VEL;
         this.onGround = false;
         this.jumpsLeft = 1;
+        // bhop: прыжок в окне сразу после приземления — моментум растёт
+        if (this._justLanded > 0) this.momentum = Math.min(1, this.momentum + MOMENTUM_BHOP);
+        this._justLanded = 0;
         this._lastJumpPressed = 0;
         this.sfx?.jump();
         this.onJump?.(false);
@@ -271,37 +315,55 @@ export class Player {
           vel.x *= k; vel.z *= k;
         } else { vel.x = 0; vel.z = 0; }
         // Accelerate (GROOVE: тонкий бонус скорости бега ×1.0→1.08)
+        // Моментум поднимает потолок скорости: ×1 → ×2.3 при полном разгоне
         const maxSp = (this.sprinting ? SPRINT_SPEED : WALK_SPEED) * this.speedMul * grooveRun
-          * (this.weaponMoveMul || 1) * (this.crouching ? 0.55 : 1);
+          * (this.weaponMoveMul || 1) * (this.crouching ? 0.55 : 1)
+          * (1 + MOMENTUM_MAX_BOOST * this.momentum);
         const cur = vel.x * this._wish.x + vel.z * this._wish.z;
         const add = Math.min(GROUND_ACCEL * dt, Math.max(maxSp - cur, 0));
         vel.x += this._wish.x * add;
         vel.z += this._wish.z * add;
       }
     } else {
-      // Air control (bhop: без трения, скорость сохраняется)
+      // Air control (bhop: без трения, скорость сохраняется; моментум поднимает потолок)
       const maxSp = (this.sprinting ? SPRINT_SPEED : WALK_SPEED) * this.speedMul * grooveRun
-        * (this.weaponMoveMul || 1);
+        * (this.weaponMoveMul || 1)
+        * (1 + MOMENTUM_MAX_BOOST * this.momentum);
       const cur = vel.x * this._wish.x + vel.z * this._wish.z;
       const add = Math.min(AIR_ACCEL * dt, Math.max(maxSp - cur, 0));
       vel.x += this._wish.x * add;
       vel.z += this._wish.z * add;
     }
 
-    // --- Гравитация ---
-    vel.y += this.physics.gravity * dt;
+    // --- Гравитация (на стене — сильно слабее, скольжение вниз ограничено) ---
+    vel.y += this.physics.gravity * (this.wallRun.active ? WALLRUN_GRAVITY : 1) * dt;
+    if (this.wallRun.active && vel.y < -2.5) vel.y = -2.5;
 
     // --- Столкновения ---
     const wasAirborne = !this.onGround;
     const fallSpeed = -vel.y;
     const res = this.physics.moveBody(body, dt);
     this.onGround = res.onGround;
+    // Удар о стену сливает моментум (во время wall-run контакт штатный — не считаем)
+    if (res.hitWall && !this.wallRun.active && !this.grapple.active) {
+      this.momentum *= MOMENTUM_HITWALL;
+    }
     if (this.onGround) {
       this.jumpsLeft = 1; // остался двойной прыжок после касания
+      if (wasAirborne) this._justLanded = 0.12; // окно bhop
       if (wasAirborne && fallSpeed > 8) {
         this.landImpact = Math.min(1, fallSpeed / 20);
         this.sfx?.step();
       }
+      if (this.wallRun.active) { this.wallRun.active = false; this.wallRun.side = 0; }
+    }
+    if (this._justLanded > 0) this._justLanded -= dt;
+    // Моментум: полёт и wall-run копят, бег по земле без прыжков медленно сливает
+    if (!this.onGround) this.momentum = Math.min(1, this.momentum + MOMENTUM_AIR * dt);
+    if (this.wallRun.active) this.momentum = Math.min(1, this.momentum + MOMENTUM_WALLRUN * dt);
+    if (this.onGround && !this.sliding) {
+      const decay = this.speed > 1 ? 0.10 : 0.6;
+      this.momentum = Math.max(0, this.momentum - decay * dt);
     }
 
     // Падение за арену / в пустоту = смерть (kill-объём)
@@ -336,6 +398,44 @@ export class Player {
 
     // --- Камера ---
     this._updateCamera(dt, spd);
+  }
+
+  // Бег по стенам: в воздухе рядом со стеной (рейкасты влево/вправо от корпуса)
+  // — гравитация слабая, скорость вдоль стены, камера кренится. Повторный
+  // прыжок — отпрыгивание (см. блок прыжков в update).
+  _updateWallRun(dt) {
+    const wr = this.wallRun;
+    if (this._wallRunCd > 0) { this._wallRunCd -= dt; wr.active = false; wr.side = 0; return; }
+    const canRun = !this.onGround && this.dashT <= 0 && !this.grapple.active
+      && this.speed > WALLRUN_MIN_SPEED;
+    if (!canRun) { wr.active = false; wr.side = 0; return; }
+    const o = this._v1.set(this.body.pos.x, this.body.pos.y + 0.9, this.body.pos.z);
+    const hitR = this.physics.raycast(o, this._v2.copy(this._right), 0.7);
+    const hitL = this.physics.raycast(o, this._v2.copy(this._right).negate(), 0.7);
+    let side = 0, wall = null;
+    if (hitR && (!hitL || hitR.dist <= hitL.dist)) { side = 1; wall = hitR; }
+    else if (hitL) { side = -1; wall = hitL; }
+    // Гистерезис: продолжаем по текущей стороне, пока стена есть
+    if (wr.active && wr.side !== 0) {
+      const same = wr.side === 1 ? hitR : hitL;
+      if (same) { side = wr.side; wall = same; }
+    }
+    if (!wall || Math.abs(wall.normal.y) > 0.35) { wr.active = false; wr.side = 0; return; }
+    const fresh = !wr.active || wr.side !== side;
+    if (fresh) { wr.t = 0; this.sfx?.slide?.(); }
+    wr.active = true; wr.side = side;
+    wr.normal.copy(wall.normal);
+    wr.t += dt;
+    if (wr.t > WALLRUN_TIME) { wr.active = false; wr.side = 0; return; }
+    // Движение вдоль стены: убираем компоненту скорости в нормаль, лёгкое прилипание
+    const vel = this.body.vel;
+    const n = wr.normal;
+    const dot = vel.x * n.x + vel.z * n.z;
+    vel.x -= n.x * dot; vel.z -= n.z * dot;
+    vel.x -= n.x * 8 * dt; vel.z -= n.z * 8 * dt;
+    // Минимальный ход вдоль стены — бег не умирает на месте
+    const sp = Math.hypot(vel.x, vel.z);
+    if (sp > 0.01 && sp < 6) { const k = 6 / sp; vel.x *= k; vel.z *= k; }
   }
 
   // Перелаз/закарабкивание: если упёрлись в препятствие при движении вперёд —
@@ -417,13 +517,14 @@ export class Player {
     this.recoilYaw *= Math.max(0, 1 - dt * 7);
     cam.rotation.y = this.look.yaw + this.recoilYaw;
     cam.rotation.x = this.look.pitch + this.recoilPitch + (this._mantlePitch || 0) + this._hitShakeX;
-    // Наклон при слайде и стрейфе (+ extraRoll извне: бас-кач камеры от музыки)
+    // Наклон при слайде, стрейфе и беге по стене (+ extraRoll извне: бас-кач от музыки)
     const axes = this.input.getMoveAxes();
-    const targetRoll = (this.sliding ? 0.14 : 0) + axes.x * -0.012 + (this.extraRoll || 0) + this._hitShakeZ;
+    const targetRoll = (this.sliding ? 0.14 : 0) + axes.x * -0.012 + (this.extraRoll || 0) + this._hitShakeZ
+      + (this.wallRun.active ? -this.wallRun.side * 0.16 : 0);
     cam.rotation.z += (targetRoll - cam.rotation.z) * Math.min(1, dt * 8);
 
-    // FOV: скорость + дэш + ADS (из weapons через fovAds)
-    const speedFov = Math.max(0, (spd - WALK_SPEED) / (SPRINT_SPEED - WALK_SPEED)) * 6;
+    // FOV: скорость + дэш + ADS (из weapons через fovAds); кап — моментум до ×2.3
+    const speedFov = Math.min(14, Math.max(0, (spd - WALK_SPEED) / (SPRINT_SPEED - WALK_SPEED)) * 6);
     this.fovKick = Math.max(0, this.fovKick - dt * 30);
     const target = this.baseFov + speedFov + this.fovKick - (this.fovAds || 0);
     if (Math.abs(cam.fov - target) > 0.05) {

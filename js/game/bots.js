@@ -139,21 +139,29 @@ export class BotManager {
     this.onKillEvent = null;   // cb(killerName, victim, byPlayer)
     this._debris = [];
 
-    // Трассеры ботов (пул)
+    // Трассеры ботов (пул билборд-лент: видимая толщина, командный цвет)
     this._tracers = [];
     if (!headless && scene) {
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+      const geo = new THREE.PlaneGeometry(1, 1);
       for (let i = 0; i < 18; i++) {
-        const line = new THREE.Line(geo.clone(), new THREE.LineBasicMaterial({
-          color: 0xffffff, transparent: true, opacity: 0.8,
+        const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+          color: 0xffffff, transparent: true, opacity: 0,
+          blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
         }));
-        line.visible = false;
-        line.frustumCulled = false;
-        scene.add(line);
-        this._tracers.push({ line, life: 0 });
+        m.visible = false;
+        m.frustumCulled = false;
+        scene.add(m);
+        this._tracers.push({
+          mesh: m, life: 0, max: 0.25,
+          from: new THREE.Vector3(), to: new THREE.Vector3(),
+        });
       }
     }
+    this._cam = null; // камера игрока — для билбординга лент (ставится в update)
+    this._tv1 = new THREE.Vector3();
+    this._tv2 = new THREE.Vector3();
+    this._tv3 = new THREE.Vector3();
+    this._tm4 = new THREE.Matrix4();
 
     // Временные объекты (без аллокаций в цикле)
     this._v1 = new THREE.Vector3();
@@ -549,18 +557,35 @@ export class BotManager {
     if (bot.model) bot.model.setMode('shoot');
   }
 
+  // Трассер-лента командного цвета: живёт 0.25с — направление огня ботов читается
   _spawnTracer(from, to, color) {
     let best = null;
     for (const t of this._tracers) { if (t.life <= 0) { best = t; break; } }
     if (!best) return;
-    const pos = best.line.geometry.attributes.position;
-    pos.setXYZ(0, from.x, from.y, from.z);
-    pos.setXYZ(1, to.x, to.y, to.z);
-    pos.needsUpdate = true;
-    best.line.material.color.setHex(color);
-    best.line.material.opacity = 0.8;
-    best.line.visible = true;
-    best.life = 0.09;
+    best.from.copy(from);
+    best.to.copy(to);
+    best.mesh.material.color.setHex(color);
+    best.mesh.material.opacity = 0.9;
+    best.mesh.visible = true;
+    best.life = best.max = 0.25;
+    this._orientTracer(best, 1);
+  }
+
+  // Лента развёрнута к камере: X — вдоль выстрела
+  _orientTracer(t, widthMul = 1) {
+    if (!this._cam) return;
+    const m = t.mesh;
+    m.position.addVectors(t.from, t.to).multiplyScalar(0.5);
+    const x = this._tv1.copy(t.to).sub(t.from);
+    const len = x.length() || 0.001;
+    x.divideScalar(len);
+    this._cam.getWorldPosition(this._tv2).sub(m.position);
+    const y = this._tv3.crossVectors(this._tv2, x);
+    if (y.lengthSq() < 1e-6) y.set(0, 1, 0); else y.normalize();
+    const z = this._tv2.crossVectors(x, y).normalize();
+    this._tm4.makeBasis(x, y, z);
+    m.quaternion.setFromRotationMatrix(this._tm4);
+    m.scale.set(len, 0.04 * widthMul, 1);
   }
 
   // ---------- FSM ----------
@@ -780,6 +805,7 @@ export class BotManager {
 
   // ---------- Главный апдейт ----------
   update(dt, player) {
+    if (player?.camera) this._cam = player.camera;
     const mc = this.mode ? this.mode.botContext() : null;
     for (const bot of this.bots) {
       if (!bot.alive) {
@@ -807,12 +833,14 @@ export class BotManager {
       bot._lean = 0;
       bot.speed = 0;
     }
-    // Трассеры
+    // Трассеры: билборд следует за камерой, лента тает и сужается
     for (const t of this._tracers) {
       if (t.life > 0) {
         t.life -= dt;
-        t.line.material.opacity = Math.max(0, t.life / 0.09) * 0.8;
-        if (t.life <= 0) t.line.visible = false;
+        const k = Math.max(0, t.life / t.max);
+        t.mesh.material.opacity = k * 0.9;
+        this._orientTracer(t, 0.4 + 0.6 * k);
+        if (t.life <= 0) t.mesh.visible = false;
       }
     }
     // Обломки

@@ -194,7 +194,8 @@ export class RemotePlayers {
     dir.normalize();
     const hit = this.physics.raycast(origin, dir, 120);
     const end = hit ? hit.point : dir.clone().multiplyScalar(120).add(origin);
-    this.onTracer?.(origin, end);
+    const shooter = this.views.get(msg.id);
+    this.onTracer?.(origin, end, shooter?.teamInfo?.color);
     if (playerPos) {
       const d = Math.hypot(origin.x - playerPos.x, origin.z - playerPos.z);
       if (d < 26) {
@@ -203,8 +204,7 @@ export class RemotePlayers {
       }
     }
     // Анимация стрельбы у автора
-    const v = this.views.get(msg.id);
-    if (v) v.model.setMode('shoot');
+    if (shooter) shooter.model.setMode('shoot');
   }
 
   // ---------- Главный апдейт ----------

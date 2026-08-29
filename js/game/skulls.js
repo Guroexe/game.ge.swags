@@ -1,8 +1,9 @@
 // ===== GEN.SWAGS Skull Snake (HYPER DEMON style, 18+) =====
 // Полупрозрачная ЗМЕЯ из черепов: цепь сегментов за головой. Постоянно
 // ПРЕСЛЕДУЕТ ближайшую живую цель (игрока ИЛИ бота — мешает всем).
-// УБИВАЕМА: 200 HP, урон от выстрелов, визуал повреждений (красные глаза).
-// Смерть: взрыв, gore, исчезновение. Респавн через 30 сек.
+// УБИВАЕМА: 40 HP (пара попаданий), визуал повреждений (красные глаза).
+// Смерть: взрыв, gore, исчезновение. Респавн через 8–12 сек (рандом)
+// в случайной точке арены.
 // Сквозь здания НЕ проходит: голова проверяет путь рейкастом по статике
 // и скользит вдоль стен. Контакт головы/сегментов наносит урон.
 // Только соло (в MP авторитет сервера, змея отключена).
@@ -58,8 +59,9 @@ const DMG_SEG = 12;
 const HIT_CD = 0.9;        // кулдаун урона по одной цели
 const RETARGET_MIN = 2.5;  // сек между сменой цели
 const RETARGET_MAX = 5.5;
-const SNAKE_HP = 200;      // HP змеи — убиваема
-const RESPAWN_TIME = 30;   // сек до респавна после смерти
+const SNAKE_HP = 40;       // HP змеи — хрупкая (2-3 попадания из АК)
+const RESPAWN_MIN = 8;     // респавн через 8–12 сек (рандом) после смерти
+const RESPAWN_RAND = 4;
 
 function ghostify(group, opacity) {
   group.traverse((o) => {
@@ -100,7 +102,7 @@ export class SkullSwarm {
     this.physics = physics;   // для запрета прохода сквозь здания
     this.bounds = 28;
     this.targets = [];        // интерфейс weapons.targets (по одной змее)
-    this.onKill = null;       // не используется: змея неуязвима
+    this.onKill = null;       // cb(snake) — смерть змеи (гибсы/счёт в main)
     this.onAttackPlayer = null;
     this._tmp = new THREE.Vector3();
     this._tmp2 = new THREE.Vector3();
@@ -110,7 +112,7 @@ export class SkullSwarm {
 
   spawn(count = 1, bounds = 28) {
     this.bounds = bounds;
-    this._spawnSnake();
+    for (let i = 0; i < count; i++) this._spawnSnake();
   }
 
   _spawnSnake() {
@@ -205,14 +207,15 @@ export class SkullSwarm {
         if (dir) { snake.vel.x -= dir.x * 1.5; snake.vel.z -= dir.z * 1.5; }
         if (snake.hp <= 0) {
           snake.alive = false;
-          snake.respawnT = RESPAWN_TIME;
+          snake.respawnT = RESPAWN_MIN + Math.random() * RESPAWN_RAND;
           this.gore?.burst?.(snake.pos);
           this.sfx?.play?.('enemy_destroy');
           if (snake.mesh) snake.mesh.visible = false;
           for (const seg of snake.segs) seg.visible = false;
-          return true;
+          this.onKill?.(snake);
+          return true; // true = именно УБИЙСТВО (как у ботов), не каждое попадание
         }
-        return true;
+        return false;
       },
     };
     this.targets.push(snake);
@@ -344,9 +347,34 @@ export class SkullSwarm {
     for (const seg of snake.segs) tryHit(near, seg.position, HIT_R_SEG, DMG_SEG);
   }
 
+  // Респавн змеи после смерти: случайная точка по краю арены, полный сброс
+  _respawnSnake(s) {
+    const ang = Math.random() * Math.PI * 2;
+    const r = this.bounds * 0.6;
+    s.head.position.set(Math.cos(ang) * r, 3.2, Math.sin(ang) * r);
+    for (let i = 0; i < s.segs.length; i++) {
+      s.segs[i].position.copy(s.head.position).add(this._tmp.set(0, 0, SEG_GAP * (i + 1)));
+    }
+    s.hp = s.maxHp;
+    s.alive = true;
+    s.victim = null;
+    s.hitCd.clear();
+    s.vel.set(1, 0, 0);
+    s.retargetT = 0; // цель выберется в этом же тике
+    s.head.visible = true;
+    for (const seg of s.segs) seg.visible = true;
+    s.eyeMat.color.setHex(0x50ff9a); // глаза снова зелёные
+  }
+
   update(dt, player, bots) {
     this._t += dt;
     for (const s of this.targets) {
+      // Мёртвая змея: невидима, не двигается, не бьёт — ждёт респавна
+      if (!s.alive) {
+        s.respawnT -= dt;
+        if (s.respawnT <= 0) this._respawnSnake(s);
+        continue;
+      }
       // Смена/валидация цели
       s.retargetT -= dt;
       const vAlive = s.victim && (s.victim.kind === 'player' ? s.victim.ref.alive : s.victim.ref.alive);

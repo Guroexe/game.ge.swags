@@ -22,8 +22,16 @@ import {
   createSunGlareTexture, getTextureSet, applyTextureSet,
 } from '../engine/models.js';
 import { loadGLBArena, applyGLBPhysics, findFloorY } from '../engine/arenaLoader.js';
+import { createRealGun } from '../engine/realguns.js';
 
 const ARENA_SIZE = 72; // базовый размер 72×72 м (карты стали больше)
+
+// Пикапы оружия по умолчанию (варианты без своего списка): akimbo при подборе
+const DEFAULT_PICKUPS = [
+  { x: -20, z: 6, kind: 'lmg' },
+  { x: 20, z: -6, kind: 'rocket' },
+  { x: 0, z: 22, kind: 'dmr' },
+];
 
 // ---------- Визуальные пресеты вариантов ----------
 export const ARENA_VARIANTS = {
@@ -65,6 +73,11 @@ export const ARENA_VARIANTS = {
     ],
     interiors: [[-22, 12, 0], [20, -18, Math.PI / 2]],
     towers: [],
+    pickups: [ // akimbo-пикапы: ракетница запад, AWP север, СВД восток
+      { x: -26, z: 6, kind: 'rocket' },
+      { x: 0, z: -24, kind: 'awp' },
+      { x: 24, z: -6, kind: 'dmr' },
+    ],
   },
   hell: { // «ГЕЕННА» 地獄 — ад: мегаструктуры, биомасса, кровавый туман
     fog: 0x160608, fogDensity: 0.019,
@@ -102,6 +115,11 @@ export const ARENA_VARIANTS = {
     ],
     interiors: [[-24, -2, Math.PI / 2], [8, 22, 0]],
     towers: [[0, -24, 0, 2]], // рёберная мега-арка из разрушаемых сегментов
+    pickups: [ // огнемёт юг, ракетница восток, гранатомёт запад
+      { x: -8, z: 20, kind: 'flamer' },
+      { x: 20, z: -4, kind: 'rocket' },
+      { x: -22, z: 6, kind: 'gl' },
+    ],
   },
   sng: { // «СЕКТОР-9» 區 — СНГ: панельки (разрушаемые) + стеклянный люкс
     fog: 0x9aa4b4, fogDensity: 0.011,
@@ -137,6 +155,11 @@ export const ARENA_VARIANTS = {
     ],
     interiors: [[-20, -4, 0]],
     towers: [[-22, 18, 0.1, 3], [18, -20, -0.15, 3], [24, 2, Math.PI / 2, 2]], // панельки
+    pickups: [ // ПКМ юг, гранатомёт запад, AWP восток
+      { x: 0, z: 18, kind: 'lmg' },
+      { x: -22, z: -10, kind: 'gl' },
+      { x: 22, z: -8, kind: 'awp' },
+    ],
   },
   necro: { // «НЕКРО-ЗАВОД» — темнее, зеленоватый туман, металл
     fog: 0x0e1b13, fogDensity: 0.017,
@@ -272,6 +295,11 @@ export const ARENA_VARIANTS = {
     pads: [],
     interiors: [],
     towers: [],
+    pickups: [ // мировые координаты, Y — лучом вниз после загрузки GLB
+      { x: 15, z: 15, kind: 'dmr' },
+      { x: -15, z: -15, kind: 'rocket' },
+      { x: 0, z: 18, kind: 'lmg' },
+    ],
   },
   dust2: { // «ДАСТ-2» — легендарная CS-карта de_dust2 (GLB)
     glb: 'assets/models/arena/de_dust2_-_cs_map.glb',
@@ -293,6 +321,11 @@ export const ARENA_VARIANTS = {
     pads: [],
     interiors: [],
     towers: [],
+    pickups: [ // AWP центр-север, ПКМ запад, СВД восток
+      { x: 10, z: 12, kind: 'awp' },
+      { x: -14, z: -8, kind: 'lmg' },
+      { x: 0, z: -18, kind: 'dmr' },
+    ],
   },
   goldencity: { // «ЗОЛОТОЙ ГОРОД» — неоновый мегаполис (GLB)
     glb: 'assets/models/arena/gm_golden_city.glb',
@@ -314,6 +347,11 @@ export const ARENA_VARIANTS = {
     pads: [],
     interiors: [],
     towers: [],
+    pickups: [ // ракетница восток, огнемёт запад, AWP север
+      { x: 14, z: 10, kind: 'rocket' },
+      { x: -14, z: 10, kind: 'flamer' },
+      { x: 0, z: -16, kind: 'awp' },
+    ],
   },
 };
 
@@ -806,6 +844,11 @@ export function buildArena(scene, physics, destruction, {
           objectives.push({ letter: z.letter, pos: z.pos.clone(), zone });
         }
       }
+      // Пикапы оружия на GLB-карте: Y — лучом вниз по геометрии карты
+      for (const pd of (V.pickups || DEFAULT_PICKUPS)) {
+        const px = pd.x * K, pz = pd.z * K;
+        addWeaponPickup(px, findFloorY(arena, px, pz), pz, pd.kind);
+      }
     }).catch((err) => {
       console.error('[arena] GLB load failed, fallback to procedural:', err);
     });
@@ -1211,6 +1254,48 @@ export function buildArena(scene, physics, destruction, {
     sparkMat.opacity = 0.7 + beatNow * 0.3;
   });
 
+  // ---------- Пикапы оружия (akimbo): парящий ствол над светящимся пьедесталом ----------
+  // Подбор игроком — в main.js (_updateWeaponPickups); здесь только визуал + состояние.
+  const weaponPickups = [];
+  const addWeaponPickup = (x, y, z, kind) => {
+    const g = new THREE.Group();
+    g.position.set(x, y, z);
+    const ped = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.55, 0.68, 0.09, 10),
+      flatMat(0x1c1e26, { metal: 0.6, rough: 0.4, noCache: true }));
+    ped.position.y = 0.045;
+    g.add(ped);
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.5, 0.02, 6, 20),
+      new THREE.MeshBasicMaterial({ color: 0xffc860, transparent: true, opacity: 0.9 }));
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 0.11;
+    g.add(ring);
+    const gun = createRealGun(kind);
+    gun.position.y = 1.0;
+    g.add(gun);
+    root.add(g);
+    const pk = { pos: new THREE.Vector3(x, y, z), kind, root: g, available: true, respawnT: 0 };
+    weaponPickups.push(pk);
+    dynamicUpdaters.push((dt, t) => {
+      if (!pk.available) return;
+      gun.rotation.y = t * 1.4;
+      gun.position.y = 1.0 + Math.sin(t * 2 + x) * 0.08;
+      ring.rotation.z = t * 0.8;
+    });
+  };
+  if (!V.glb) {
+    // Y — лучом вниз по физике: пикап встаёт НА поверхность (пол/блок/платформа),
+    // а не внутрь геометрии
+    const downRay = new THREE.Vector3(0, -1, 0);
+    const fromV = new THREE.Vector3();
+    for (const pd of (V.pickups || DEFAULT_PICKUPS)) {
+      const px = pd.x * K, pz = pd.z * K;
+      const hit = physics.raycast(fromV.set(px, 30, pz), downRay, 60);
+      addWeaponPickup(px, hit ? hit.point.y : 0, pz, pd.kind);
+    }
+  }
+
   // ---------- Навигационная сетка waypoint'ов (grid 4м) ----------
   const waypoints = buildWaypoints(physics, SIZE);
 
@@ -1227,7 +1312,7 @@ export function buildArena(scene, physics, destruction, {
   return {
     root, variant, size: SIZE,
     colliders, destructibles, centerWalls, spawns, cashoutStations, cashboxSpawn,
-    cashbox, objectives, waypoints, update, jumpPads,
+    cashbox, objectives, waypoints, update, jumpPads, weaponPickups,
     reflector, glossFloor, setReflector, explosion, bioDecals, setPsy,
     lightShowBeat, // спайк интенсивности прожекторов на бите (main.js → flow.onBeat)
     bounds: SIZE / 2 - 1.5, // предел для ботов/клампов

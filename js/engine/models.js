@@ -74,8 +74,9 @@ export function toonMat(color, opts = {}) {
   toonCache.set(key, m);
   return m;
 }
-const _outlineMat = new THREE.MeshBasicMaterial({ color: 0x0a0a10, side: THREE.BackSide });
-export function addOutline(target, s = 1.05) {
+// Белый контур силуэта: враги читаются на любом фоне (была «аниме-тушь» 0x0a0a10)
+const _outlineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide });
+export function addOutline(target, s = 1.08) {
   const o = new THREE.Mesh(target.geometry, _outlineMat);
   o.scale.setScalar(s);
   o.userData.isOutline = true;
@@ -1131,7 +1132,7 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
   // плавные бёдра
   const pelvis = mesh(sphGeo(0.155, 14, 12), matSuit, 0, -0.02, 0);
   pelvis.scale.set(1.08, 0.78, 0.90);
-  addOutline(pelvis, 1.06);
+  addOutline(pelvis, 1.10);
   hips.add(pelvis);
   // свет-швы боди на бёдрах
   hips.add(mesh(boxGeo(0.016, 0.09, 0.016), matGlowSoft, -0.125, -0.02, 0.095));
@@ -1177,7 +1178,7 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
   ];
   const torsoMesh = new THREE.Mesh(new THREE.LatheGeometry(torsoProfile, 14), matSuit);
   torsoMesh.scale.z = 0.78;
-  addOutline(torsoMesh, 1.05);
+  addOutline(torsoMesh, 1.09);
   torso.add(torsoMesh);
   // грудь — мягкие формы поверх боди
   const bustL = mesh(sphGeo(0.080, 12, 10), matSuit, -0.070, 0.295, 0.090);
@@ -1221,11 +1222,12 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
 
   // --- Голова (аниме: сфера + подбородок, лицо-текстура) ---
   const head = new THREE.Group();
+  head.name = 'cg_head'; // FP-тело прячет голову по имени
   head.position.y = 0.48;
   torso.add(head);
   const skull = mesh(sphGeo(0.152, 16, 14), matSkin, 0, 0.145, 0.005);
   skull.scale.set(0.92, 1.04, 0.96);
-  addOutline(skull, 1.05);
+  addOutline(skull, 1.08);
   head.add(skull);
   const chin = mesh(sphGeo(0.082, 10, 8), matSkin, 0, 0.038, 0.035);
   chin.scale.set(0.78, 0.60, 0.78);
@@ -1269,6 +1271,7 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
   // Волосы: скальп, чёлка-пряди, пряди у лица, затылочная масса, твинтейлы
   const scalp = mesh(sphGeo(0.163, 14, 12), matHair, 0, 0.168, -0.028);
   scalp.scale.set(0.95, 1.0, 0.98);
+  addOutline(scalp, 1.06);
   head.add(scalp);
   // чёлка — сплюснутые конусы остриём вниз
   const mkBang = (x, z, len, rz, m) => {
@@ -1289,6 +1292,7 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
   // затылочная масса (до лопаток)
   const hairBack = mesh(capGeo(0.075, 0.34, 10), matHairDark, 0, -0.05, -0.135);
   hairBack.scale.set(1.35, 1, 0.5);
+  addOutline(hairBack, 1.07);
   head.add(hairBack);
 
   // Твинтейлы до колен: 5 сегментов-капсул + лента + коготь
@@ -1324,6 +1328,7 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
   // --- Руки: капсулы боди + шипастый наплечник + лезвия-наручи ---
   const makeArm = (side) => {
     const shoulder = new THREE.Group();
+    shoulder.name = side < 0 ? 'cg_armL' : 'cg_armR'; // FP-тело прячет руки по имени
     shoulder.position.set(0.19 * side, 0.40, 0);
     torso.add(shoulder);
     // наплечник-полусфера + 3 шипа
@@ -1340,14 +1345,14 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
     shoulder.add(padRing);
     // плечо — капсула боди
     const upper = mesh(capGeo(0.046, 0.20, 8), matSuit, 0, -0.15, 0);
-    addOutline(upper, 1.07);
+    addOutline(upper, 1.11);
     shoulder.add(upper);
     const elbow = new THREE.Group();
     elbow.position.y = -0.31;
     shoulder.add(elbow);
     // предплечье-наруч
     const fore = mesh(capGeo(0.038, 0.18, 8), matDark, 0, -0.12, 0);
-    addOutline(fore, 1.07);
+    addOutline(fore, 1.11);
     elbow.add(fore);
     const ringE = mesh(new THREE.TorusGeometry(0.045, 0.006, 6, 12), matGlow, 0, -0.03, 0);
     ringE.rotation.x = Math.PI / 2;
@@ -1381,7 +1386,7 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
     // бедро
     const thigh = mesh(capGeo(0.070, 0.30, 10), matSkin, 0, -0.22, 0);
     thigh.scale.set(1, 1, 0.92);
-    addOutline(thigh, 1.06);
+    addOutline(thigh, 1.10);
     hip.add(thigh);
     // светящаяся «трещина» на бедре (хоррор-свечение)
     const crack = mesh(boxGeo(0.010, 0.14, 0.008), matGlow, 0.046 * side, -0.20, 0.058);
@@ -1403,13 +1408,15 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
     // голень-гетра
     const shin = mesh(capGeo(0.053, 0.26, 10), matSuit, 0, -0.18, 0);
     shin.scale.set(1, 1, 0.90);
-    addOutline(shin, 1.06);
+    addOutline(shin, 1.10);
     knee.add(shin);
     const kneeRing = mesh(new THREE.TorusGeometry(0.056, 0.007, 6, 12), matGlow, 0, -0.03, 0);
     kneeRing.rotation.x = Math.PI / 2;
     knee.add(kneeRing);
     // бронеботинок
-    knee.add(mesh(cylGeo(0.058, 0.072, 0.20, 10), matArmor, 0, -0.35, 0));
+    const boot = mesh(cylGeo(0.058, 0.072, 0.20, 10), matArmor, 0, -0.35, 0);
+    addOutline(boot, 1.10);
+    knee.add(boot);
     const bootRing = mesh(new THREE.TorusGeometry(0.062, 0.008, 6, 12), matSilver, 0, -0.26, 0);
     bootRing.rotation.x = Math.PI / 2;
     knee.add(bootRing);
@@ -1673,8 +1680,28 @@ export function createViewmodel(kind = 'rifle') {
   const matSleeve = flatMat(0x3a3f4a, { rough: 0.85, metal: 0.1 });
   const matStrap = flatMat(0x1c1e24, { rough: 0.9 });
   const armR = mesh(boxGeo(0.07, 0.07, 0.3), matArm, 0.05, -0.06, 0.12);
-  const armL = mesh(boxGeo(0.07, 0.07, 0.24), matArm, -0.06, -0.05, -0.08);
-  group.add(armR, armL);
+  group.add(armR);
+  // Левая рука — отдельная группа: на затяжке поднимается ко рту вместе
+  // с сигаретой (иначе сигарета теряется за корпусом оружия)
+  const armLGroup = new THREE.Group();
+  armLGroup.position.set(-0.06, -0.05, -0.08); // домашняя поза левой руки
+  const armLHome = armLGroup.position.clone();
+  const armL = mesh(boxGeo(0.07, 0.07, 0.24), matArm, 0, 0, 0);
+  armLGroup.add(armL);
+  group.add(armLGroup);
+  // Сигарета между пальцами: тлеющий кончик, затяжка каждые ~15с и после
+  // убийства (smokeNow)
+  const cig = new THREE.Group();
+  const cigPaper = mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.11, 6), flatMat(0xe8e2d4, { rough: 0.9 }), 0, 0, 0);
+  cigPaper.rotation.x = Math.PI / 2; // вдоль Z (вперёд)
+  const cigFilter = mesh(new THREE.CylinderGeometry(0.0074, 0.0074, 0.026, 6), flatMat(0xc07830, { rough: 0.9 }), 0, 0, 0.044);
+  cigFilter.rotation.x = Math.PI / 2;
+  const cigTip = new THREE.Mesh(new THREE.SphereGeometry(0.009, 6, 5), new THREE.MeshBasicMaterial({ color: 0xff7a20 }));
+  cigTip.position.z = -0.058;
+  cig.add(cigPaper, cigFilter, cigTip);
+  cig.position.set(-0.02, 0.03, -0.10);
+  cig.rotation.y = 0.25;
+  armLGroup.add(cig);
   // Правый рукав с ремнями
   const sleeveR = mesh(boxGeo(0.1, 0.1, 0.2), matSleeve, 0.055, -0.055, 0.22);
   group.add(sleeveR);
@@ -1682,9 +1709,9 @@ export function createViewmodel(kind = 'rifle') {
     group.add(mesh(boxGeo(0.108, 0.108, 0.018), matStrap, 0.055, -0.055, 0.16 + i * 0.05));
     group.add(mesh(boxGeo(0.02, 0.02, 0.02), flatMat(PALETTE.mechSilver, { metal: 0.8, rough: 0.3 }), 0.055, -0.11, 0.16 + i * 0.05));
   }
-  // Левый рукав с одним ремнём
-  group.add(mesh(boxGeo(0.095, 0.095, 0.12), matSleeve, -0.06, -0.05, -0.02));
-  group.add(mesh(boxGeo(0.1, 0.1, 0.018), matStrap, -0.06, -0.05, -0.02));
+  // Левый рукав с одним ремнём — в группе левой руки (поднимается с ней)
+  armLGroup.add(mesh(boxGeo(0.095, 0.095, 0.12), matSleeve, 0, 0, 0.06));
+  armLGroup.add(mesh(boxGeo(0.1, 0.1, 0.018), matStrap, 0, 0, 0.06));
 
   let muzzle, magazine;
   // Корпусные меши (заменяются скачанным бластером в upgradeViewmodel)
@@ -1809,11 +1836,23 @@ export function createViewmodel(kind = 'rifle') {
   const st = {
     t: 0, bobPhase: 0, speedF: 0,
     recoil: 0, reloadT: 0, reloadDur: 0, ads: 0,
+    cigT: 0, nextCigAt: 9 + Math.random() * 6, // первая затяжка через 9-15с
+    spr: null, _sprA: null,                    // пружины инерции (лениво)
   };
   // Домашняя поза магазина (upgradeViewmodel может переназначить под магазин glb)
   const magHome = magazine.position.clone();
 
-  function update(dt, { speed = 0, ads = false, grounded = true } = {}) {
+  const _clamp = (v, m) => Math.max(-m, Math.min(m, v));
+  const _smooth = (x) => x * x * (3 - 2 * x);
+
+  function update(dt, opts = {}) {
+    const { speed = 0, ads = false, grounded = true } = opts;
+    // Снять пружинные смещения прошлого кадра (поза пересчитывается каждый кадр)
+    const PA = st._sprA;
+    if (PA) {
+      group.position.x -= PA.px; group.position.y -= PA.py; group.position.z -= PA.pz;
+      group.rotation.x -= PA.rx; group.rotation.y -= PA.ry; group.rotation.z -= PA.rz;
+    }
     st.t += dt;
     const targetAds = ads ? 1 : 0;
     st.ads += (targetAds - st.ads) * Math.min(1, dt * 12);
@@ -1828,14 +1867,6 @@ export function createViewmodel(kind = 'rifle') {
     group.position.x += Math.sin(st.t * 1.4) * 0.0025 * sway;
     group.position.y += Math.sin(st.t * 2.3) * 0.003 * sway;
 
-    // Бег-качание
-    if (grounded) {
-      const bob = st.speedF * (1 - st.ads * 0.7);
-      group.position.x += Math.sin(st.bobPhase) * 0.012 * bob;
-      group.position.y += Math.abs(Math.cos(st.bobPhase)) * 0.014 * bob;
-      group.rotation.z = Math.sin(st.bobPhase) * 0.02 * bob;
-    }
-
     // Отдача
     if (st.recoil > 0) {
       group.position.z += st.recoil * 0.06;
@@ -1843,6 +1874,70 @@ export function createViewmodel(kind = 'rifle') {
       st.recoil = Math.max(0, st.recoil - dt * 6);
     } else {
       group.rotation.x *= 0.8;
+    }
+
+    // --- Инерционная физика рук: оружие отстаёт от камеры на пружинах ---
+    // Входы: скорость поворота камеры (lookV), стрейф, приземление, слайд.
+    // Пружины с лёгким overshoot — «кайфовая» инерция вместо скриптового боба.
+    const S = st.spr || (st.spr = {
+      px: 0, py: 0, pz: 0, pvx: 0, pvy: 0, pvz: 0,
+      rx: 0, ry: 0, rz: 0, rvx: 0, rvy: 0, rvz: 0,
+    });
+    const lagK = 1 - st.ads * 0.78; // в ADS оружие жёстче приклеено к камере
+    const lookVX = opts.lookVX || 0; // рад/с yaw: >0 — поворот вправо
+    const lookVY = opts.lookVY || 0; // рад/с pitch: >0 — взгляд вниз
+    const strafe = opts.strafe || 0; // -1..1
+    const land = opts.land || 0;     // 0..1 импульс приземления
+    let tPx = _clamp(-lookVX * 0.014, 0.07) * lagK + strafe * -0.014 * lagK;
+    let tPy = _clamp(lookVY * 0.011, 0.06) * lagK - land * 0.05 - (grounded ? 0 : 0.006);
+    const tPz = -land * 0.03;
+    let tRx = _clamp(lookVY * 0.045, 0.22) * lagK - land * 0.16;
+    let tRy = _clamp(lookVX * 0.05, 0.25) * lagK;
+    let tRz = strafe * -0.045 * lagK + (opts.sliding ? 0.10 : 0);
+    // Шаги — тоже через пружину (инерция вместо скриптового синуса)
+    if (grounded && st.speedF > 0.01) {
+      const bob = st.speedF * (1 - st.ads * 0.7);
+      tPy += -Math.abs(Math.cos(st.bobPhase)) * 0.011 * bob;
+      tPx += Math.sin(st.bobPhase) * 0.007 * bob;
+      tRz += Math.sin(st.bobPhase) * 0.016 * bob;
+    }
+    // Полу-имплицитная интеграция: позиция резкая (11 Гц), поворот ленивее (8 Гц)
+    const PF = 11, PD = 2 * PF * 0.72;
+    const RF = 8, RD = 2 * RF * 0.70;
+    S.pvx += ((tPx - S.px) * PF * PF - S.pvx * PD) * dt; S.px += S.pvx * dt;
+    S.pvy += ((tPy - S.py) * PF * PF - S.pvy * PD) * dt; S.py += S.pvy * dt;
+    S.pvz += ((tPz - S.pz) * PF * PF - S.pvz * PD) * dt; S.pz += S.pvz * dt;
+    S.rvx += ((tRx - S.rx) * RF * RF - S.rvx * RD) * dt; S.rx += S.rvx * dt;
+    S.rvy += ((tRy - S.ry) * RF * RF - S.rvy * RD) * dt; S.ry += S.rvy * dt;
+    S.rvz += ((tRz - S.rz) * RF * RF - S.rvz * RD) * dt; S.rz += S.rvz * dt;
+    group.position.x += S.px; group.position.y += S.py; group.position.z += S.pz;
+    group.rotation.x += S.rx; group.rotation.y += S.ry; group.rotation.z += S.rz;
+    st._sprA = { px: S.px, py: S.py, pz: S.pz, rx: S.rx, ry: S.ry, rz: S.rz };
+
+    // --- Сигарета: затяжка по таймеру ~15с или по smokeNow() (после килла) ---
+    if (cig.visible) {
+      if (st.cigT <= 0 && st.t > st.nextCigAt) st.cigT = 1.7;
+      if (st.cigT > 0) {
+        st.cigT -= dt;
+        const p = 1 - Math.max(0, st.cigT) / 1.7; // 0..1
+        // поднос ко рту: вверх 0..0.25, затяжка 0.25..0.7, вниз 0.7..1
+        const raise = p < 0.25 ? _smooth(p / 0.25) : p < 0.7 ? 1 : 1 - _smooth((p - 0.7) / 0.3);
+        // Левая рука с сигаретой поднимается ко рту (к центру и вверх)
+        armLGroup.position.set(
+          armLHome.x + raise * -0.11,
+          armLHome.y + raise * 0.115,
+          armLHome.z + raise * 0.17);
+        armLGroup.rotation.x = raise * -0.55;
+        armLGroup.rotation.y = raise * 0.35;
+        const drag = p > 0.25 && p < 0.7; // тлеет ярче на затяжке
+        cigTip.material.color.setHex(drag ? 0xffc040 : 0xff7a20);
+        cigTip.scale.setScalar(drag ? 1.6 : 1);
+        if (st.cigT <= 0) {
+          st.nextCigAt = st.t + 13 + Math.random() * 6;
+          armLGroup.position.copy(armLHome);
+          armLGroup.rotation.set(0, 0, 0);
+        }
+      }
     }
 
     // Перезарядка: УНИКАЛЬНАЯ хореография на ствол (st.reloadStyle):
@@ -1913,7 +2008,40 @@ export function createViewmodel(kind = 'rifle') {
   function startReload(dur, style = 'magflip') { st.reloadT = dur; st.reloadDur = dur; st.reloadStyle = style; }
   function isReloading() { return st.reloadT > 0; }
 
-  const vmApi = { group, muzzle, magazine, bodyParts, magHome, update, kick, startReload, isReloading, st };
+  // Поза покоя/ADS снаружи (akimbo: левый ствол зеркалит позу)
+  function setPose(rx, ry, rz, rotY, ax, ay, az) {
+    restPos.set(rx, ry, rz);
+    if (ax !== undefined) adsPos.set(ax, ay, az);
+    group.rotation.y = rotY;
+  }
+
+  // Затяжка по событию (убийство). Таймерная затяжка не наезжает: после
+  // ручной nextCigAt пересчитается в конце анимации.
+  function smokeNow() {
+    if (!cig.visible) return;
+    if (st.cigT <= 0) st.cigT = 1.7;
+  }
+  // Дым летит только во время самой затяжки (hold-фаза)
+  function isSmoking() {
+    if (!cig.visible || st.cigT <= 0) return false;
+    const p = 1 - st.cigT / 1.7;
+    return p > 0.25 && p < 0.75;
+  }
+  function setCigVisible(v) {
+    if (cig.visible === v) return;
+    cig.visible = v;
+    if (!v) {
+      st.cigT = 0;
+      armLGroup.position.copy(armLHome);
+      armLGroup.rotation.set(0, 0, 0);
+    } else st.nextCigAt = st.t + 4;
+  }
+
+  const vmApi = {
+    group, muzzle, magazine, bodyParts, magHome, update, kick, startReload, isReloading, st,
+    setPose, smokeNow, isSmoking, setCigVisible, cigTip,
+    cigVisible: () => cig.visible,
+  };
   return vmApi;
 }
 

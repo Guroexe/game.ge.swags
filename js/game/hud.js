@@ -176,13 +176,13 @@ export class HUD {
       const ct = document.createElement('div');
       ct.id = 'clash-tag';
       ct.textContent = '⚡ SOUND CLASH — УРОН +10% ⚡';
-      ct.style.cssText = 'display:none;position:absolute;top:86px;left:50%;transform:translateX(-50%);padding:4px 18px;font-size:13px;letter-spacing:3px;font-weight:700;color:#0a0610;background:linear-gradient(90deg,#ff2d55,#a05cff);box-shadow:0 0 22px rgba(255,45,85,.8)';
+      ct.style.cssText = 'display:none;position:absolute;top:64px;left:50%;transform:translateX(-50%);padding:3px 14px;font-size:12px;letter-spacing:3px;font-weight:700;color:#0a0610;background:linear-gradient(90deg,#ff2d55,#a05cff);box-shadow:0 0 22px rgba(255,45,85,.8)';
       hud.appendChild(ct);
       this._clashTag = ct;
       // Баннер перехода между мирами (▲ ВОЗВЫШЕНИЕ / ▼ ПАДЕНИЕ)
       const wb = document.createElement('div');
       wb.id = 'warp-banner';
-      wb.style.cssText = 'display:none;position:absolute;top:34%;left:50%;transform:translate(-50%,-50%);font-size:26px;letter-spacing:6px;font-weight:700;color:#e8e8f0;text-shadow:0 0 24px rgba(255,45,85,.9);white-space:nowrap';
+      wb.style.cssText = 'display:none;position:absolute;top:16%;left:50%;transform:translate(-50%,-50%);font-size:22px;letter-spacing:6px;font-weight:700;color:#e8e8f0;text-shadow:0 0 24px rgba(255,45,85,.9);white-space:nowrap';
       hud.appendChild(wb);
       this._warpBanner = wb;
     }
@@ -198,7 +198,7 @@ export class HUD {
     div.className = `ntf ${cls}`;
     div.textContent = text;
     box.prepend(div);
-    while (box.children.length > 4) box.lastChild.remove();
+    while (box.children.length > 2) box.lastChild.remove(); // максимум 2 — центр не заваливаем
     setTimeout(() => { div.classList.add('out'); }, 2600);
     setTimeout(() => div.remove(), 3100);
   }
@@ -230,7 +230,7 @@ export class HUD {
     void el.offsetWidth; // перезапуск transition
     el.classList.add('on');
     clearTimeout(this._chainT);
-    this._chainT = setTimeout(() => el.classList.remove('on'), 1400);
+    this._chainT = setTimeout(() => el.classList.remove('on'), 900);
   }
 
   dropFlash(on) {
@@ -515,7 +515,11 @@ export class HUD {
       const v = this._zmV.set(st.pos.x, st.pos.y + 3.2, st.pos.z).project(cam);
       const onScreen = v.z < 1 && v.x > -1.05 && v.x < 1.05 && v.y > -1.05 && v.y < 1.05;
       if (!onScreen) { el.style.display = 'none'; continue; }
+      // Ромб не должен закрывать прицел: у центра экрана маркер растворяется
+      const dc = Math.hypot(v.x * W / 2, v.y * H / 2);
+      if (dc < 80) { el.style.display = 'none'; continue; }
       el.style.display = '';
+      el.style.opacity = dc < 170 ? ((dc - 80) / 90).toFixed(2) : '';
       el.style.left = `${((v.x + 1) / 2 * W).toFixed(0)}px`;
       el.style.top = `${((1 - v.y) / 2 * H).toFixed(0)}px`;
       el.className = `zm ${st.team === 1 ? 'tb' : st.team === 2 ? 'tc' : ''}`;

@@ -127,6 +127,22 @@ export class WeaponSystem {
     // Владение: на респавне выдаётся ОДИН случайный ствол (randomizeLoadout)
     this.owned = new Set(SLOT_ORDER);
     this._dead = false;
+    // Akimbo (пикап на арене): второй такой же ствол в левой руке
+    this.dual = null;          // { vm } — левая viewmodel
+    this._dualHand = false;    // чья очередь стрелять (чередование)
+
+    // --- Дым сигареты (пул спрайтов, мировые координаты) ---
+    this._smokePool = [];
+    const smokeTex = this._makeFlashTexture();
+    for (let i = 0; i < 10; i++) {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: smokeTex, color: 0x9aa0aa, transparent: true, opacity: 0, depthWrite: false,
+      }));
+      s.visible = false;
+      scene.add(s);
+      this._smokePool.push({ s, life: 0, vel: new THREE.Vector3() });
+    }
+    this._smokeT = 0;
 
     // --- Пул снарядов (ракетница/гранатомёт) ---
     this._projPool = [];
@@ -185,17 +201,21 @@ export class WeaponSystem {
     // Цели (боты) — регистрируются снаружи: [{hitTest(ray)->{point,part,target}|null}]
     this.targets = [];
 
-    // --- Трассеры (пул линий) ---
+    // --- Трассеры (пул билборд-лент: видимая толщина, читаемое направление) ---
     this._tracers = [];
-    const tracerMat = new THREE.LineBasicMaterial({ color: 0xffc860, transparent: true, opacity: 0.9 });
-    const tracerGeo = new THREE.BufferGeometry();
-    tracerGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+    const tracerGeo = new THREE.PlaneGeometry(1, 1);
     for (let i = 0; i < 24; i++) {
-      const line = new THREE.Line(tracerGeo.clone(), tracerMat.clone());
-      line.visible = false;
-      line.frustumCulled = false;
-      scene.add(line);
-      this._tracers.push({ line, life: 0 });
+      const m = new THREE.Mesh(tracerGeo, new THREE.MeshBasicMaterial({
+        color: 0xffe9b0, transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      }));
+      m.visible = false;
+      m.frustumCulled = false;
+      scene.add(m);
+      this._tracers.push({
+        mesh: m, life: 0, max: 0.22, width: 0.032,
+        from: new THREE.Vector3(), to: new THREE.Vector3(),
+      });
     }
 
     // --- Декали-дырки (пул спрайтов) ---
@@ -231,6 +251,9 @@ export class WeaponSystem {
     this._dir = new THREE.Vector3();
     this._ray = new THREE.Ray();
     this._tmp = new THREE.Vector3();
+    this._tmp2 = new THREE.Vector3();
+    this._tmp3 = new THREE.Vector3();
+    this._m4 = new THREE.Matrix4();
     this._muzzleWorld = new THREE.Vector3();
 
     // События
@@ -289,8 +312,9 @@ export class WeaponSystem {
     this.owned = new Set([kind]);
     this.weapon.vm.group.visible = false;
     this.current = this.slots.findIndex((s) => s.kind === kind);
+    this.setDual(false); // респавн снимает akimbo
     const w = this.weapon;
-    w.ammo = w.def.mag;
+    w.ammo = this.magSize;
     w.cooldown = 0;
     this.reloading = false;
     this.spread = 0; this.shotIndex = 0;
@@ -299,10 +323,55 @@ export class WeaponSystem {
     return kind;
   }
 
+  // Пикап на арене: конкретный ствол; dual=true — второй такой же в левую руку
+  forceLoadout(kind, { dual = false } = {}) {
+    const idx = this.slots.findIndex((s) => s.kind === kind);
+    if (idx < 0) return null;
+    this.owned = new Set([kind]);
+    this.weapon.vm.group.visible = false;
+    this.current = idx;
+    this.setDual(dual);
+    const w = this.weapon;
+    w.ammo = this.magSize;
+    w.cooldown = 0;
+    this.reloading = false;
+    this.spread = 0; this.shotIndex = 0;
+    this.setDead(false);
+    this._updateHud();
+    return kind;
+  }
+
+  // Магазин с учётом akimbo (две руки — двойной боекомплект)
+  get magSize() { return this.weapon.def.mag * (this.dual ? 2 : 1); }
+
+  // Akimbo вкл/выкл: вторая зеркальная viewmodel в левой руке
+  setDual(on) {
+    if (on === !!this.dual) return;
+    if (on) {
+      const w = this.weapon;
+      const vm = createViewmodel(w.def.vm);
+      vm.setPose(-0.24, -0.21, -0.42, -0.05, -0.10, -0.16, -0.35); // левая поза
+      vm.setCigVisible?.(false); // в левой руке ствол, а не сигарета
+      this.camera.add(vm.group);
+      upgradeViewmodel(vm, w.def.vm).catch((e) => console.warn('[weapons] dual GLB fail', e));
+      this.dual = { vm };
+      this._dualHand = false;
+      // Правый ствол чуть наружу — оба читаются
+      w.vm.setPose(0.26, -0.21, -0.42, 0.06, 0.10, -0.16, -0.35);
+    } else {
+      if (this.dual) {
+        this.camera.remove(this.dual.vm.group);
+        this.dual = null;
+      }
+      this.weapon.vm.setPose(0.22, -0.2, -0.42, 0.03, 0, -0.148, -0.35);
+    }
+  }
+
   // Смерть: ствол из рук убираем (баг «оружие висит после смерти»)
   setDead(d) {
     this._dead = d;
     this.weapon.vm.group.visible = !d;
+    if (this.dual) this.dual.vm.group.visible = !d;
   }
 
   // Стартовый ствол из настроек меню (по имени ключа)
@@ -332,18 +401,20 @@ export class WeaponSystem {
 
   _doReload(w) {
     const def = w.def;
-    if (w.ammo >= def.mag) { this.sfx?.ui(); return; }
+    const mag = this.magSize;
+    if (w.ammo >= mag) { this.sfx?.ui(); return; }
     this.reloading = true;
     // Бонус ритма: предыдущая перезарядка, завершённая на бите, ускоряет эту на 10%
     // (точечный бонус). GROOVE: непрерывная скорость перезарядки ×0.9→1.25
-    // (время ÷ mult) — стекается с точечным бонусом.
+    // (время ÷ mult) — стекается с точечным бонусом. Akimbo: +25% времени.
     const grooveReload = activeGroove()?.reloadMul ?? 1;
-    const dur = def.reloadTime * this._reloadSpeedMul / grooveReload;
+    const dur = def.reloadTime * (this.dual ? 1.25 : 1) * this._reloadSpeedMul / grooveReload;
     this._reloadSpeedMul = 1;
     w.vm.startReload(dur, def.reloadFx || 'magflip');
+    if (this.dual) this.dual.vm.startReload(dur, def.reloadFx || 'magflip');
     this.sfx?.reload();
     setTimeout(() => {
-      w.ammo = def.mag; // резерв бесконечный — просто заполняем магазин
+      w.ammo = mag; // резерв бесконечный — просто заполняем магазин(ы)
       this.reloading = false;
       // Перезарядка завершена НА БИТЕ → следующая на 10% быстрее
       const j = this.onAction?.('reload_end');
@@ -459,7 +530,7 @@ export class WeaponSystem {
 
     // Перезарядка
     const reloadDown = input.isDown('KeyR') || input.touch.reload;
-    if (reloadDown && !this._reloadWasDown && !this.reloading && w.ammo < def.mag) {
+    if (reloadDown && !this._reloadWasDown && !this.reloading && w.ammo < this.magSize) {
       this._doReload(w);
     }
     this._reloadWasDown = reloadDown;
@@ -481,9 +552,9 @@ export class WeaponSystem {
     this._updateProjectiles(dt);
     this._updateFlames(dt);
 
-    // ADS (зум зависит от ствола: карабин приближает сильнее)
+    // ADS (зум зависит от ствола: карабин приближает сильнее; akimbo — слабее)
     const ads = input.aiming && !this.reloading;
-    this.player.fovAds = ads ? (def.adsFov ?? 14) : 0;
+    this.player.fovAds = ads ? (def.adsFov ?? 14) * (this.dual ? 0.4 : 1) : 0;
     // Тяжёлое оружие (пулемёт) слегка замедляет перемещение
     this.player.weaponMoveMul = def.moveMul ?? 1;
 
@@ -514,19 +585,41 @@ export class WeaponSystem {
     const ch = document.getElementById('crosshair');
     if (ch) ch.style.setProperty('--sp', `${4 + totalSpread * 600}px`);
 
-    // Анимация видовой модели
-    w.vm.update(dt, { speed: this.player.speed, ads, grounded: this.player.onGround });
+    // Анимация видовой модели: пружинная инерция от взгляда/движения
+    const vmOpts = {
+      speed: this.player.speed, ads, grounded: this.player.onGround,
+      lookVX: this.player.lookVelX || 0, lookVY: this.player.lookVelY || 0,
+      strafe: input.getMoveAxes().x, land: this.player.landImpact || 0,
+      sliding: this.player.sliding,
+    };
+    w.vm.update(dt, vmOpts);
+    if (this.dual) this.dual.vm.update(dt, vmOpts);
+    // Сигарета — только когда оружие одиночное
+    const cigWanted = !this.dual;
+    if (w.vm.cigVisible?.() !== cigWanted) w.vm.setCigVisible?.(cigWanted);
+    // Дым сигареты: струйка от кончика во время затяжки (мировые координаты)
+    if (cigWanted && w.vm.isSmoking?.() && w.vm.cigTip) {
+      this._smokeT -= dt;
+      if (this._smokeT <= 0) {
+        this._smokeT = 0.09;
+        w.vm.cigTip.getWorldPosition(this._tmp);
+        this._spawnSmoke(this._tmp);
+      }
+    }
+    this._updateSmoke(dt);
 
     // Затухание вспышки
     this.flash.intensity *= Math.pow(0.001, dt * 8);
     this.flashSprite.material.opacity *= Math.pow(0.001, dt * 8);
 
-    // Трассеры
+    // Трассеры: билборд следует за камерой, лента тает и сужается
     for (const t of this._tracers) {
       if (t.life > 0) {
         t.life -= dt;
-        t.line.material.opacity = Math.max(0, t.life / 0.08) * 0.9;
-        if (t.life <= 0) t.line.visible = false;
+        const k = Math.max(0, t.life / t.max);
+        t.mesh.material.opacity = k * 0.95;
+        this._orientTracer(t, 0.4 + 0.6 * k);
+        if (t.life <= 0) t.mesh.visible = false;
       }
     }
     // Декали живут недолго (переиспользуем пул по кругу)
@@ -536,7 +629,7 @@ export class WeaponSystem {
     const w = this.weapon;
     const def = w.def;
     w.ammo--;
-    w.cooldown = 60 / def.rpm;
+    w.cooldown = 60 / (def.rpm * (this.dual ? 1.8 : 1)); // akimbo: темп ×1.8
     this._updateHud();
 
     // Pattern-отдача: вертикальный подброс + псевдослучайный weave по индексу выстрела
@@ -546,13 +639,22 @@ export class WeaponSystem {
     this.player.recoilYaw += weave * (ads ? 0.6 : 1);
     this.recoverT = 0.12; // recovery начинается после паузы
     this.spread = Math.min(def.spreadMax, this.spread + def.spreadAdd);
-    w.vm.kick(def.kick);
+    // Akimbo: руки чередуются — дуло/вспышка/трассер от активной руки
+    let muzzleObj = w.vm.muzzle;
+    if (this.dual) {
+      this._dualHand = !this._dualHand;
+      muzzleObj = this._dualHand ? this.dual.vm.muzzle : w.vm.muzzle;
+      w.vm.kick(def.kick * (this._dualHand ? 0.4 : 1));
+      this.dual.vm.kick(def.kick * (this._dualHand ? 1 : 0.4));
+    } else {
+      w.vm.kick(def.kick);
+    }
 
     if (this.sfx?.shot) this.sfx.shot(w.kind);                       // per-kind реальный выстрел
     else if (def.pellets > 1) this.sfx?.shotgun(); else this.sfx?.shoot();
 
     // Muzzle flash
-    w.vm.muzzle.getWorldPosition(this._muzzleWorld);
+    muzzleObj.getWorldPosition(this._muzzleWorld);
     this.flash.position.copy(this._muzzleWorld);
     this.flash.intensity = def.pellets > 1 ? 10 : 6;
     this.flashSprite.position.copy(this._muzzleWorld);
@@ -767,16 +869,35 @@ export class WeaponSystem {
     this._spawnTracer(this._muzzleWorld, endPoint);
   }
 
-  _spawnTracer(from, to) {
+  // Трассер-лента: яркая, живёт 0.22с — направление выстрела читается всегда.
+  // color/width можно переопределить (MP: командный цвет стрелявшего).
+  _spawnTracer(from, to, color = 0xffe9b0, width = 0.032) {
     let best = this._tracers[0];
     for (const t of this._tracers) { if (t.life <= 0) { best = t; break; } }
-    const pos = best.line.geometry.attributes.position;
-    pos.setXYZ(0, from.x, from.y, from.z);
-    pos.setXYZ(1, to.x, to.y, to.z);
-    pos.needsUpdate = true;
-    best.line.visible = true;
-    best.line.material.opacity = 0.9;
-    best.life = 0.08;
+    best.from.copy(from);
+    best.to.copy(to);
+    best.width = width;
+    best.mesh.material.color.setHex(color);
+    best.mesh.material.opacity = 0.95;
+    best.mesh.visible = true;
+    best.life = best.max = 0.22;
+    this._orientTracer(best, 1);
+  }
+
+  // Ориентация ленты: X — вдоль выстрела, плоскость развёрнута к камере
+  _orientTracer(t, widthMul = 1) {
+    const m = t.mesh;
+    m.position.addVectors(t.from, t.to).multiplyScalar(0.5);
+    const x = this._tmp.copy(t.to).sub(t.from);
+    const len = x.length() || 0.001;
+    x.divideScalar(len);
+    this.camera.getWorldPosition(this._tmp2).sub(m.position); // к камере
+    const y = this._tmp3.crossVectors(this._tmp2, x);
+    if (y.lengthSq() < 1e-6) y.set(0, 1, 0); else y.normalize();
+    const z = this._tmp2.crossVectors(x, y).normalize();
+    this._m4.makeBasis(x, y, z);
+    m.quaternion.setFromRotationMatrix(this._m4);
+    m.scale.set(len, t.width * widthMul, 1);
   }
 
   _spawnDecal(point, normal) {
@@ -785,5 +906,27 @@ export class WeaponSystem {
     d.mesh.visible = true;
     d.mesh.position.copy(point).addScaledVector(normal, 0.01);
     d.mesh.lookAt(this._tmp.copy(point).add(normal));
+  }
+
+  // --- Дым сигареты: серая струйка, поднимается и расплывается ---
+  _spawnSmoke(pos) {
+    const p = this._smokePool.find((x) => x.life <= 0);
+    if (!p) return;
+    p.s.position.copy(pos);
+    p.vel.set((Math.random() - 0.5) * 0.15, 0.35 + Math.random() * 0.2, (Math.random() - 0.5) * 0.15);
+    p.life = 1.1;
+    p.s.visible = true;
+    p.s.scale.setScalar(0.03);
+  }
+
+  _updateSmoke(dt) {
+    for (const p of this._smokePool) {
+      if (p.life <= 0) continue;
+      p.life -= dt;
+      p.s.position.addScaledVector(p.vel, dt);
+      p.s.scale.addScalar(dt * 0.10);
+      p.s.material.opacity = Math.max(0, p.life / 1.1) * 0.35;
+      if (p.life <= 0) p.s.visible = false;
+    }
   }
 }

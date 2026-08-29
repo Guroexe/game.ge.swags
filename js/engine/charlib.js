@@ -141,6 +141,37 @@ function makeGoreDebris(root, scene) {
   return debris;
 }
 
+// Белый контур силуэта для скиннинг-GLB: клон SkinnedMesh с BackSide-материалом,
+// вершины сдвигаются по скиннёной нормали (инъекция в шейдер перед project_vertex).
+// Толщина задаётся в локальных единицах меша — вычисляется из мирового масштаба.
+function _makeOutlineMat(thick) {
+  const m = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide });
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uOutline = { value: thick };
+    shader.vertexShader = 'uniform float uOutline;\n' + shader.vertexShader.replace(
+      '#include <project_vertex>',
+      'transformed += objectNormal * uOutline;\n#include <project_vertex>',
+    );
+  };
+  return m;
+}
+
+function _addSkinnedOutlines(inner) {
+  inner.updateMatrixWorld(true);
+  const ws = new THREE.Vector3();
+  const skins = [];
+  inner.traverse((o) => { if (o.isSkinnedMesh) skins.push(o); });
+  for (const sm of skins) {
+    sm.getWorldScale(ws);
+    const thick = 0.035 / Math.max(1e-4, ws.x); // ~3.5см в мире
+    const o = new THREE.SkinnedMesh(sm.geometry, _makeOutlineMat(thick));
+    o.bind(sm.skeleton, sm.bindMatrix);
+    o.frustumCulled = false;
+    o.userData.isOutline = true;
+    sm.add(o);
+  }
+}
+
 // Создать экземпляр персонажа. null — если GLB ещё не загружен (fallback на createCyberGirl)
 export function instantiateGirl(id, { team = 0 } = {}) {
   const tpl = _tpl.get(id) || _tpl.get(TEAM_CHAR[team % 3]);
@@ -172,6 +203,7 @@ export function instantiateGirl(id, { team = 0 } = {}) {
   const bboxMinY = bbox.min.y;
   inner.scale.setScalar(ns);
   inner.position.y = -bbox.min.y * ns;
+  _addSkinnedOutlines(inner); // белый силуэт — враги читаются на любом фоне
 
   // Реальное оружие в правой руке (Mixamo-кость *RightHand)
   let handBone = null, headBone = null;
