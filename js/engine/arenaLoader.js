@@ -34,7 +34,10 @@ export async function loadGLBArena(url, targetSize = 70) {
   // наклонных зданий) растеризуем каждый треугольник в сетку вокселей.
   // Каждый занятый воксель → точный AABB. Стена любой толщины и наклона
   // становится коллизией; невидимых «коробок по bbox» больше нет.
-  const colliders = voxelizeScene(scene);
+  // Воксел масштабируется от размера карты: число коллайдеров (и цена
+  // линейного обхода физики за кадр) не растёт с масштабом.
+  const voxel = Math.max(0.45, 0.45 * (targetSize / 72));
+  const colliders = voxelizeScene(scene, voxel);
 
   // --- Точки спавна (3 шт, треугольник) ---
   const spawns = [];
@@ -128,7 +131,7 @@ export function applyGLBPhysics(physics, arena) {
 }
 
 // Определяет, лежит ли точка на GLB-полу (для спавна)
-export function findFloorY(arena, x, z, startY = 50) {
+export function findFloorY(arena, x, z, startY = 50, fallback = 0) {
   const ray = new THREE.Raycaster(
     new THREE.Vector3(x, startY, z),
     new THREE.Vector3(0, -1, 0),
@@ -137,5 +140,36 @@ export function findFloorY(arena, x, z, startY = 50) {
   const meshes = [];
   arena.scene.traverse((o) => { if (o.isMesh) meshes.push(o); });
   const hits = ray.intersectObjects(meshes, true);
-  return hits.length ? hits[0].point.y : 0;
+  return hits.length ? hits[0].point.y : fallback;
+}
+
+// Валидная точка на карте (GLB или процедурной): пол под ногами (не бездна,
+// не высокая крыша), над головой свободно 1.9м, тело не зажато в стене.
+// При провале — спираль к центру от исходной точки. null — совсем не нашли.
+// Работает по физическим коллайдерам (physics.raycast) — совпадает с игрой.
+export function findValidSpot(physics, x, z, { maxR = 25, attempts = 16, maxY = 25 } = {}) {
+  const down = new THREE.Vector3(0, -1, 0);
+  const up = new THREE.Vector3(0, 1, 0);
+  const o = new THREE.Vector3();
+  const side = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(-1, 0, 0),
+    new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, -1)];
+  for (let a = 0; a < attempts; a++) {
+    const r = a === 0 ? 0 : Math.min(maxR, 1.4 * Math.ceil(a / 4));
+    const ang = (a % 4) * Math.PI / 2 + Math.floor(a / 4) * 0.5;
+    const cx = x + Math.cos(ang) * r;
+    const cz = z + Math.sin(ang) * r;
+    const floor = physics.raycast(o.set(cx, 40, cz), down, 80);
+    if (!floor) continue;                    // над бездной
+    const y = floor.point.y;
+    if (y > maxY) continue;                  // крыша/мост высоко
+    if (physics.raycast(o.set(cx, y + 0.3, cz), up, 1.9)) continue; // низкий потолок
+    let blocked = 0;
+    for (const d of side) {
+      const h = physics.raycast(o.set(cx, y + 0.9, cz), d, 0.5);
+      if (h && h.dist < 0.32) blocked++;     // стена вплотную
+    }
+    if (blocked >= 3) continue;              // зажаты — внутри геометрии
+    return { x: cx, y, z: cz };
+  }
+  return null;
 }

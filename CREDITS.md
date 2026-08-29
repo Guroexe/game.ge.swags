@@ -136,13 +136,14 @@ js/game/arena.js (маппинг наборов на варианты арен).
 ## Череп-змея (assets/models/skull/)
 | Файл | Модель | Автор | Лицензия | Источник |
 |---|---|---|---|---|
-| skull.gltf + skull.bin + halloweenbits_texture.png | KayKit Halloween Bits — Skull | Kay Lousberg / Sketchpunk Labs | **MIT** | github.com/sketchpunklabs/kaykit_halloween |
+| demon_skull.glb | «Spiked head» — рогатый череп демона (OBJ→GLB конвертация dev-скриптом) | Paul Wortmann (производные: yughues, 3d-dungeon-debris) | **CC0** | https://opengameart.org/content/spiked-head-and-skull |
+| skull.gltf + skull.bin + halloweenbits_texture.png | KayKit Halloween Bits — Skull (запасной) | Kay Lousberg / Sketchpunk Labs | **MIT** | github.com/sketchpunklabs/kaykit_halloween |
 
-Текст лицензии: `assets/models/skull/KAYKIT_LICENSE.txt`.
+Текст лицензии KayKit: `assets/models/skull/KAYKIT_LICENSE.txt`.
 Использование: low-poly череп-сегменты летающей змеи-охотника
 (js/game/skulls.js `loadSkullTemplate`/`cloneRealSkull`, нормировка к высоте 1,
-светящиеся глаза — отдельные сферы с `userData.isEye`). Процедурный череп
-сохранён как fallback.
+светящиеся глаза — отдельные сферы с `userData.isEye`, белый контур —
+`addOutline` на голову и сегменты). Процедурный череп сохранён как fallback.
 
 ## Анонсер убийств (assets/audio/announcer/)
 | Файлы | Назначение | Происхождение | Лицензия |

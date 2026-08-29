@@ -21,7 +21,7 @@ import {
   createCrystalExplosion, createMarbleTexture, createBiohazardDecal,
   createSunGlareTexture, getTextureSet, applyTextureSet,
 } from '../engine/models.js';
-import { loadGLBArena, applyGLBPhysics, findFloorY } from '../engine/arenaLoader.js';
+import { loadGLBArena, applyGLBPhysics, findFloorY, findValidSpot } from '../engine/arenaLoader.js';
 import { createRealGun } from '../engine/realguns.js';
 
 const ARENA_SIZE = 72; // базовый размер 72×72 м (карты стали больше)
@@ -277,6 +277,7 @@ export const ARENA_VARIANTS = {
   },
   ruins: { // «РУИНЫ» — GLB-карта: постапокалиптический город, загружается из файла
     glb: 'assets/models/arena/ruined_city_free_5.glb',
+    glbSize: 150, // реальный масштаб города (не «кукольный домик» 60м)
     fog: 0x8a8a92, fogDensity: 0.012,
     hemiSky: 0xc0c8d8, hemiGround: 0x4a4a52, hemiInt: 1.2,
     sun: 0xe8e0d0, sunInt: 2.8, rim: 0x8a9aaa, rimInt: 0.7,
@@ -303,6 +304,7 @@ export const ARENA_VARIANTS = {
   },
   dust2: { // «ДАСТ-2» — легендарная CS-карта de_dust2 (GLB)
     glb: 'assets/models/arena/de_dust2_-_cs_map.glb',
+    glbSize: 130, // dust2 в честном масштабе CS
     fog: 0xd8c8a0, fogDensity: 0.010,
     hemiSky: 0xffe8c0, hemiGround: 0x8a7a5a, hemiInt: 1.1,
     sun: 0xfff0d0, sunInt: 2.2, rim: 0xd8b070, rimInt: 0.6,
@@ -329,6 +331,7 @@ export const ARENA_VARIANTS = {
   },
   goldencity: { // «ЗОЛОТОЙ ГОРОД» — неоновый мегаполис (GLB)
     glb: 'assets/models/arena/gm_golden_city.glb',
+    glbSize: 170, // мегаполис с просторными улицами
     fog: 0x1a0a2a, fogDensity: 0.014,
     hemiSky: 0xffd080, hemiGround: 0x2a1a3a, hemiInt: 0.95,
     sun: 0xffe0a0, sunInt: 1.8, rim: 0xff60ff, rimInt: 0.8,
@@ -359,8 +362,10 @@ export function buildArena(scene, physics, destruction, {
   reflector: useReflector = true, variant = 'eden', size = ARENA_SIZE,
 } = {}) {
   const V = ARENA_VARIANTS[variant] || ARENA_VARIANTS.eden;
-  const SIZE = size;
+  // GLB-карты строятся в честном масштабе варианта (glbSize), не в размере режима
+  const SIZE = V.glb ? (V.glbSize || 150) : size;
   const K = SIZE / ARENA_SIZE; // масштаб координат от базовой арены
+  const isGLB = !!V.glb; // на GLB-картах процедурный пол/периметр/декор не нужен
   // Всё содержимое арены — в одной группе: пересборка = dispose группы
   const root = new THREE.Group();
   root.name = `arena:${variant}`;
@@ -425,6 +430,7 @@ export function buildArena(scene, physics, destruction, {
   }
   const floorBase = new THREE.Mesh(boxGeo(SIZE, 1, SIZE), floorBaseMat);
   floorBase.position.y = -0.5;
+  floorBase.visible = !isGLB; // на GLB-карте земля — из модели; коллайдер остаётся страховкой
   root.add(floorBase);
   physics.addStatic(new THREE.Vector3(-SIZE / 2, -1, -SIZE / 2), new THREE.Vector3(SIZE / 2, 0, SIZE / 2), 'floor');
 
@@ -437,8 +443,8 @@ export function buildArena(scene, physics, destruction, {
   });
   reflector.rotation.x = -Math.PI / 2;
   reflector.position.y = 0.001;
-  reflector.visible = useReflector;
-  root.add(reflector);
+  reflector.visible = useReflector && !isGLB; // на GLB-карте зеркальный слой не кладём
+  if (!isGLB) root.add(reflector);
 
   // Fake-gloss пол для слабого тира (мрамор + низкая шероховатость = блики)
   // Скачанный мрамор (ambientCG): albedo+roughness; fallback — процедурный canvas.
@@ -458,8 +464,8 @@ export function buildArena(scene, physics, destruction, {
   const glossFloor = new THREE.Mesh(new THREE.PlaneGeometry(SIZE, SIZE), glossMat);
   glossFloor.rotation.x = -Math.PI / 2;
   glossFloor.position.y = 0.001;
-  glossFloor.visible = !useReflector;
-  root.add(glossFloor);
+  glossFloor.visible = !useReflector && !isGLB;
+  if (!isGLB) root.add(glossFloor);
 
   // Мраморная вуаль поверх отражения (полупрозрачная: отражение просвечивает)
   const veilMat = new THREE.MeshStandardMaterial({
@@ -476,20 +482,24 @@ export function buildArena(scene, physics, destruction, {
   const marbleVeil = new THREE.Mesh(new THREE.PlaneGeometry(SIZE, SIZE), veilMat);
   marbleVeil.rotation.x = -Math.PI / 2;
   marbleVeil.position.y = 0.02;
+  marbleVeil.visible = !isGLB;
   root.add(marbleVeil);
 
-  // Переключение отражения (авто-качество)
+  // Переключение отражения (авто-качество; на GLB — слоёв нет)
   function setReflector(on) {
+    if (isGLB) return;
     reflector.visible = !!on;
     glossFloor.visible = !on;
   }
 
-  // Декоративные полосы пола
-  const stripMat = flatMat(V.strip, { emissive: V.strip, ei: 1.1 });
-  for (let i = -1; i <= 1; i++) {
-    const strip = new THREE.Mesh(boxGeo(SIZE * 0.9, 0.02, 0.15), stripMat);
-    strip.position.set(0, 0.03, i * 18 * K);
-    root.add(strip);
+  // Декоративные полосы пола (только процедурные арены)
+  if (!isGLB) {
+    const stripMat = flatMat(V.strip, { emissive: V.strip, ei: 1.1 });
+    for (let i = -1; i <= 1; i++) {
+      const strip = new THREE.Mesh(boxGeo(SIZE * 0.9, 0.02, 0.15), stripMat);
+      strip.position.set(0, 0.03, i * 18 * K);
+      root.add(strip);
+    }
   }
 
   // ---------- Периметр: стены-руины (частично разрушаемые) ----------
@@ -503,15 +513,17 @@ export function buildArena(scene, physics, destruction, {
     destructibles.push(wall);
     return wall;
   }
-  // По периметру — сегменты с проходами
-  perimeterWall(-half + 10 * K, -half + 0.4, 0, 20 * K, 6);
-  perimeterWall(half - 10 * K, -half + 0.4, 0, 20 * K, 6);
-  perimeterWall(-half + 0.4, -half + 16 * K, Math.PI / 2, 12 * K, 6);
-  perimeterWall(-half + 0.4, half - 16 * K, Math.PI / 2, 12 * K, 6);
-  perimeterWall(half - 0.4, -half + 16 * K, -Math.PI / 2, 12 * K, 6);
-  perimeterWall(half - 0.4, half - 16 * K, -Math.PI / 2, 12 * K, 6);
-  perimeterWall(-half + 12 * K, half - 0.4, Math.PI, 16 * K, 5);
-  perimeterWall(half - 12 * K, half - 0.4, Math.PI, 16 * K, 5);
+  // По периметру — сегменты с проходами (на GLB-картах граница — сама карта)
+  if (!isGLB) {
+    perimeterWall(-half + 10 * K, -half + 0.4, 0, 20 * K, 6);
+    perimeterWall(half - 10 * K, -half + 0.4, 0, 20 * K, 6);
+    perimeterWall(-half + 0.4, -half + 16 * K, Math.PI / 2, 12 * K, 6);
+    perimeterWall(-half + 0.4, half - 16 * K, Math.PI / 2, 12 * K, 6);
+    perimeterWall(half - 0.4, -half + 16 * K, -Math.PI / 2, 12 * K, 6);
+    perimeterWall(half - 0.4, half - 16 * K, -Math.PI / 2, 12 * K, 6);
+    perimeterWall(-half + 12 * K, half - 0.4, Math.PI, 16 * K, 5);
+    perimeterWall(half - 12 * K, half - 0.4, Math.PI, 16 * K, 5);
+  }
 
   // ---------- БИОХАЗАРД-декали (в psy-break светятся) ----------
   const bioDecals = [];
@@ -523,10 +535,12 @@ export function buildArena(scene, physics, destruction, {
     bioDecals.push(d);
     return d;
   }
-  addBioDecal(-half + 17 * K, 3.4, -half + 0.86, 0, 7);            // большая на северной стене
-  addBioDecal(half - 0.86, 3.2, -half + 16 * K, -Math.PI / 2, 5.5); // восточная
-  addBioDecal(-half + 0.86, 3.2, half - 16 * K, Math.PI / 2, 5.5);  // западная
-  addBioDecal(half - 12 * K, 2.8, half - 0.86, Math.PI, 5);        // южная
+  if (!isGLB) { // декали крепятся к процедурным стенам — на GLB их нет
+    addBioDecal(-half + 17 * K, 3.4, -half + 0.86, 0, 7);            // большая на северной стене
+    addBioDecal(half - 0.86, 3.2, -half + 16 * K, -Math.PI / 2, 5.5); // восточная
+    addBioDecal(-half + 0.86, 3.2, half - 16 * K, Math.PI / 2, 5.5);  // западная
+    addBioDecal(half - 12 * K, 2.8, half - 0.86, Math.PI, 5);        // южная
+  }
 
   // Psy-break: биохазард светится (оттенки — по варианту арены)
   const _bioBase = new THREE.Color(V.bio.base);
@@ -781,8 +795,8 @@ export function buildArena(scene, physics, destruction, {
     const st = createCashoutStation(sd.letter, panelTexSet);
     st.position.set(sd.x * K, 0, sd.z * K);
     root.add(st);
-    physics.addStatic(new THREE.Vector3(sd.x * K - 0.7, 0, sd.z * K - 0.7), new THREE.Vector3(sd.x * K + 0.7, 1.3, sd.z * K + 0.7), 'station');
-    cashoutStations.push({ letter: sd.letter, pos: new THREE.Vector3(sd.x * K, 0, sd.z * K), station: st });
+    const collider = physics.addStatic(new THREE.Vector3(sd.x * K - 0.7, 0, sd.z * K - 0.7), new THREE.Vector3(sd.x * K + 0.7, 1.3, sd.z * K + 0.7), 'station');
+    cashoutStations.push({ letter: sd.letter, pos: new THREE.Vector3(sd.x * K, 0, sd.z * K), station: st, collider });
     dynamicUpdaters.push((dt, t) => {
       const holo = st.userData.holo;
       holo.rotation.y = t * 1.5;
@@ -826,28 +840,63 @@ export function buildArena(scene, physics, destruction, {
   // ruins пусты (blocks/platforms/pads/interiors/towers = []), так что
   // процедурная база не мешает.
   let glbArena = null;
+  let glbReady = null;
   if (V.glb) {
-    loadGLBArena(V.glb, SIZE).then((arena) => {
+    glbReady = loadGLBArena(V.glb, SIZE).then((arena) => {
       glbArena = arena;
       root.add(arena.scene);
       applyGLBPhysics(physics, arena);
+      // Все точки — на валидные места реальной геометрии: пол под ногами,
+      // над головой свободно, не внутри стены (спираль к центру при провале)
       if (arena.spawns?.length) {
         spawns.length = 0;
-        for (const s of arena.spawns) spawns.push({ team: s.team, pos: s.pos.clone(), yaw: s.yaw });
+        for (const s of arena.spawns) {
+          const spot = findValidSpot(physics, s.pos.x, s.pos.z);
+          spawns.push({
+            team: s.team,
+            pos: spot ? new THREE.Vector3(spot.x, spot.y + 0.1, spot.z) : s.pos.clone(),
+            yaw: s.yaw,
+          });
+        }
       }
       if (arena.zones?.length) {
         objectives.length = 0;
         for (const z of arena.zones) {
+          const spot = findValidSpot(physics, z.pos.x, z.pos.z);
+          const zp = spot ? new THREE.Vector3(spot.x, spot.y, spot.z) : z.pos.clone();
           const zone = createObjectiveZone(z.letter, 0xff6a3a, panelTexSet);
-          zone.position.copy(z.pos);
+          zone.position.copy(zp);
           root.add(zone);
-          objectives.push({ letter: z.letter, pos: z.pos.clone(), zone });
+          objectives.push({ letter: z.letter, pos: zp, zone });
         }
       }
-      // Пикапы оружия на GLB-карте: Y — лучом вниз по геометрии карты
+      // Кешаут-станции и кешбокс — тоже на валидные точки (режим читает позиции;
+      // stations — по живой ссылке Vector3, кешбокс — через arena.glbReady в main)
+      for (const st of cashoutStations) {
+        const spot = findValidSpot(physics, st.pos.x, st.pos.z);
+        if (spot) {
+          st.pos.set(spot.x, spot.y, spot.z);
+          st.station.position.set(spot.x, spot.y, spot.z);
+          if (st.collider) {
+            st.collider.min.set(spot.x - 0.7, spot.y, spot.z - 0.7);
+            st.collider.max.set(spot.x + 0.7, spot.y + 1.3, spot.z + 0.7);
+            physics.updateStatic(st.collider); // перерегистрация в сетке
+          }
+        }
+      }
+      const cbSpot = findValidSpot(physics, cashboxSpawn.x, cashboxSpawn.z);
+      if (cbSpot) {
+        cashboxSpawn.set(cbSpot.x, cbSpot.y + 0.4, cbSpot.z);
+        cashbox.position.copy(cashboxSpawn);
+        // Кристаллический взрыв-маркер парит над новой точкой кешбокса
+        explosion.group.position.set(cbSpot.x, cbSpot.y + 1.3, cbSpot.z);
+      }
+      // Пикапы оружия на GLB-карте: валидная точка на УРОВНЕ УЛИЦ (не на крышах);
+      // не нашли — пикап пропускаем (недосягаемый хуже, чем отсутствующий)
       for (const pd of (V.pickups || DEFAULT_PICKUPS)) {
         const px = pd.x * K, pz = pd.z * K;
-        addWeaponPickup(px, findFloorY(arena, px, pz), pz, pd.kind);
+        const spot = findValidSpot(physics, px, pz, { maxY: 10, maxR: 40, attempts: 24 });
+        if (spot) addWeaponPickup(spot.x, spot.y, spot.z, pd.kind);
       }
     }).catch((err) => {
       console.error('[arena] GLB load failed, fallback to procedural:', err);
@@ -861,27 +910,29 @@ export function buildArena(scene, physics, destruction, {
     { x: 0, z: -85, w: 18, h: 90, d: 14 }, { x: -40, z: 80, w: 12, h: 76, d: 12 },
     { x: 55, z: 5, w: 10, h: 58, d: 10 }, { x: -55, z: -15, w: 11, h: 66, d: 11 },
   ];
-  for (const t of towers) {
-    const tower = createRuinedTower(t.w, t.h, t.d);
-    tower.position.set(t.x, 0, t.z);
-    tower.rotation.y = Math.random() * Math.PI;
-    root.add(tower);
-  }
+  if (!isGLB) { // фоновые башни/всплески/черепа — только на процедурных аренах
+    for (const t of towers) {
+      const tower = createRuinedTower(t.w, t.h, t.d);
+      tower.position.set(t.x, 0, t.z);
+      tower.rotation.y = Math.random() * Math.PI;
+      root.add(tower);
+    }
 
-  // ---------- Кристаллические всплески ----------
-  const spikePositions = [[-26, 8], [26, 4], [10, 24], [-12, -26], [26, -24], [-4, -20]];
-  for (const [sx, sz] of spikePositions) {
-    const spike = createCrystalSpike(2.5 + Math.random() * 3);
-    spike.position.set(sx * K, 0, sz * K);
-    root.add(spike);
-  }
+    // ---------- Кристаллические всплески ----------
+    const spikePositions = [[-26, 8], [26, 4], [10, 24], [-12, -26], [26, -24], [-4, -20]];
+    for (const [sx, sz] of spikePositions) {
+      const spike = createCrystalSpike(2.5 + Math.random() * 3);
+      spike.position.set(sx * K, 0, sz * K);
+      root.add(spike);
+    }
 
-  // ---------- Черепа-украшения ----------
-  for (let i = 0; i < 10; i++) {
-    const skull = createSkull(0.25 + Math.random() * 0.15);
-    skull.position.set((Math.random() - 0.5) * 50 * K, 0, (Math.random() - 0.5) * 50 * K);
-    skull.rotation.y = Math.random() * Math.PI * 2;
-    root.add(skull);
+    // ---------- Черепа-украшения ----------
+    for (let i = 0; i < 10; i++) {
+      const skull = createSkull(0.25 + Math.random() * 0.15);
+      skull.position.set((Math.random() - 0.5) * 50 * K, 0, (Math.random() - 0.5) * 50 * K);
+      skull.rotation.y = Math.random() * Math.PI * 2;
+      root.add(skull);
+    }
   }
 
   // ---------- Пропсы по варианту (PS2-детализация силуэтов) ----------
@@ -1271,7 +1322,17 @@ export function buildArena(scene, physics, destruction, {
     ring.rotation.x = Math.PI / 2;
     ring.position.y = 0.11;
     g.add(ring);
+    // Световой столб-маяк: пикап видно издалека через всю арену
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.30, 0.42, 7, 10, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: 0xffc860, transparent: true, opacity: 0.14,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      }));
+    beam.position.y = 3.6;
+    g.add(beam);
     const gun = createRealGun(kind);
+    gun.scale.setScalar(1.15); // чуть крупнее — читается силуэт
     gun.position.y = 1.0;
     g.add(gun);
     root.add(g);
@@ -1282,6 +1343,8 @@ export function buildArena(scene, physics, destruction, {
       gun.rotation.y = t * 1.4;
       gun.position.y = 1.0 + Math.sin(t * 2 + x) * 0.08;
       ring.rotation.z = t * 0.8;
+      ring.material.opacity = 0.65 + Math.sin(t * 3.2 + x) * 0.3; // пульс кольца
+      beam.material.opacity = 0.11 + Math.sin(t * 2.4 + x) * 0.05; // дыхание столба
     });
   };
   if (!V.glb) {
@@ -1315,8 +1378,10 @@ export function buildArena(scene, physics, destruction, {
     cashbox, objectives, waypoints, update, jumpPads, weaponPickups,
     reflector, glossFloor, setReflector, explosion, bioDecals, setPsy,
     lightShowBeat, // спайк интенсивности прожекторов на бите (main.js → flow.onBeat)
+    glbReady, // Promise|null — резолвится после загрузки и привязки GLB-карты
     bounds: SIZE / 2 - 1.5, // предел для ботов/клампов
-    env: { fogColor: V.fog, fogDensity: V.fogDensity }, // применяется к engine/scene снаружи
+    // Туман разреживаем на больших картах — дальность видимости под масштаб
+    env: { fogColor: V.fog, fogDensity: V.fogDensity * Math.min(1, Math.pow(72 / SIZE, 0.5)) },
   };
 }
 

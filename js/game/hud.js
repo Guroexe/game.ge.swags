@@ -589,7 +589,8 @@ export class HUD {
     if (!player) return;
     const S = this._radar.width;
     const C = S / 2;
-    const range = 34;                 // метров на полный радиус
+    // Дальность радара под масштаб арены (GLB-карты 130-170м — видим дальше)
+    const range = Math.max(34, (g.arena?.size || 60) / 2.2);
     const scale = (C * 0.76) / range; // рисуем внутри «стекла» PNG-кольца
     const yaw = player.look.yaw;
 

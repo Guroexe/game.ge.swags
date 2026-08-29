@@ -894,13 +894,17 @@ class Game {
     this.physics.clear();
     this.destruction.reset();
     this.weapons?.gore?.reset(); // убрать сплаты/бурсты прошлой арены
-    if (this.skullSwarm) this.skullSwarm.bounds = size / 2 - 2; // границы полёта черепов
     this._arenaVariant = variant;
-    this._arenaSize = size;
-    if (this.player) this.player.arenaHalf = size / 2; // kill-объём за границей
     this.arena = buildArena(this.engine.scene, this.physics, this.destruction, {
       reflector: this.engine.datamoshAvailable(), variant, size,
     });
+    // GLB-карты строятся в своём честном масштабе (glbSize) — берём фактический
+    const effSize = this.arena.size;
+    this._arenaSize = effSize;
+    if (this.player) this.player.arenaHalf = effSize / 2; // kill-объём за границей
+    if (this.skullSwarm) this.skullSwarm.bounds = effSize / 2 - 2; // границы полёта черепов
+    // GLB долгружается асинхронно: точки режима привязываются к геометрии позже
+    this.arena.glbReady?.then(() => this._resnapMode());
     // Туман/фон варианта (engine.base* используется при выходе из DROP)
     const env = this.arena.env;
     this.engine.baseFogColor = env.fogColor;
@@ -939,6 +943,17 @@ class Game {
     this.botsManager?.setRoster(roster);
     this._refreshTargets();
     this._createMode(kind);
+  }
+
+  // GLB-карта долгрузилась: станции/кешбокс привязаны к реальной геометрии —
+  // подтянуть точки в живой режим (кешбокс клонируется в конструкторе режима)
+  _resnapMode() {
+    if (!this.mode || !this.arena) return;
+    this.mode.boxPos?.copy(this.arena.cashboxSpawn);
+    for (let i = 0; i < (this.mode.stations?.length || 0); i++) {
+      const src = this.arena.cashoutStations[i];
+      if (src && this.mode.stations[i].pos !== src.pos) this.mode.stations[i].pos = src.pos;
+    }
   }
 
   // Цели для оружия: боты + летающие черепа (в MP — удалённые игроки, ставит mp-код)
@@ -1628,6 +1643,9 @@ class Game {
     this.menu?.hideDeath();
     this._endSoulCam?.();
     this.menu?.apply?.(); // боевой комплект: стартовый ствол + скин своей команды
+    // Акцент свет-швов рук viewmodel — под скин команды (c1 РОНИН/c2 КУКЛА/c3 ПУСТАЯ)
+    const SKIN_ACCENT = { c1: 0xff2d55, c2: 0xa05cff, c3: 0x9adfff };
+    this.weapons?.setSkinAccent?.(SKIN_ACCENT[this.menu?.settings?.skin] ?? 0xff2d55);
     // Скин применяется к моделям при создании — если выбор сменился, пересоздаём ботов
     const wantSkin = this.menu?.settings?.skin;
     if (this.botsManager && wantSkin !== this.botsManager._skinApplied) {

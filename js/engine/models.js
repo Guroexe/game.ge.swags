@@ -366,6 +366,23 @@ export function createSunGlareTexture(size = 256) {
 }
 
 // Гравировка/орнамент для корпуса оружия (map + bump)
+// Мелкая радиальная glow-текстура (огонёк сигареты, спрайты)
+let _glowDotTex = null;
+function createGlowDotTexture() {
+  if (_glowDotTex) return _glowDotTex;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const ctx = cv.getContext('2d');
+  const g = ctx.createRadialGradient(32, 32, 1, 32, 32, 30);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.35, 'rgba(255,255,255,0.5)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  _glowDotTex = new THREE.CanvasTexture(cv);
+  return _glowDotTex;
+}
+
 function createEngravingTexture(w = 256, h = 128) {
   const cv = document.createElement('canvas');
   cv.width = w; cv.height = h;
@@ -1659,6 +1676,80 @@ export function createCyberGirl({ team = 0, skin = null } = {}) {
 }
 
 // ============================================================
+// Рука кибердевушки для viewmodel (low-poly, стиль createCyberGirl):
+// боди-капсула предплечья, броня с плавником-лезвием и свет-швами,
+// перчатка с пальцами. Локальный -Z — вперёд (к дулу), начало — запястье.
+// cig: левая рука — пальцы разведены, между указательным и средним сигарета.
+// ============================================================
+function createCyberArm({ side = 1, accent = 0xff2d55, cig = false } = {}) {
+  const g = new THREE.Group();
+  const matSuit = toonMat(0x23262f);
+  const matArmor = flatMat(0x14151c, { metal: 0.5, rough: 0.38 });
+  const matSilver = flatMat(PALETTE.mechSilver, { metal: 0.8, rough: 0.28 });
+  const matGlow = flatMat(accent, { emissive: accent, ei: 1.9, noCache: true });
+  const matGlove = flatMat(0x1b1d26, { rough: 0.65, metal: 0.2 });
+
+  // Предплечье: боди-капсула назад-вниз (уходит из кадра)
+  const fore = mesh(capGeo(0.040, 0.20, 8), matSuit, 0, -0.035, 0.13);
+  fore.rotation.x = 0.45;
+  g.add(fore);
+  // Броненакладка предплечья + плавник-лезвие сбоку
+  const bracer = mesh(capGeo(0.050, 0.15, 8), matArmor, 0, -0.045, 0.115);
+  bracer.rotation.x = 0.45;
+  g.add(bracer);
+  const fin = mesh(boxGeo(0.008, 0.045, 0.15), matSilver, 0.048 * side, -0.055, 0.10);
+  fin.rotation.x = 0.45;
+  g.add(fin);
+  // Свет-швы: два кольца вдоль предплечья
+  for (let i = 0; i < 2; i++) {
+    const ring = mesh(new THREE.TorusGeometry(0.048, 0.004, 6, 12), matGlow, 0, -0.025 - i * 0.035, 0.135 - i * 0.032);
+    ring.rotation.x = Math.PI / 2 + 0.45;
+    g.add(ring);
+  }
+  // Манжета у запястья со свет-кольцом
+  const cuff = mesh(cylGeo(0.052, 0.058, 0.05, 8), matArmor, 0, -0.005, 0.03);
+  cuff.rotation.x = 0.45;
+  g.add(cuff);
+  const cuffRing = mesh(new THREE.TorusGeometry(0.055, 0.005, 6, 12), matGlow, 0, -0.005, 0.03);
+  cuffRing.rotation.x = Math.PI / 2 + 0.45;
+  g.add(cuffRing);
+
+  // Кисть-перчатка: ладонь + тыльная пластина + пальцы + большой палец
+  const hand = new THREE.Group();
+  g.add(hand);
+  hand.add(mesh(boxGeo(0.052, 0.034, 0.075), matGlove, 0, 0, -0.01));
+  hand.add(mesh(boxGeo(0.046, 0.012, 0.06), matArmor, 0, 0.022, -0.008));
+  hand.add(mesh(boxGeo(0.014, 0.006, 0.02), matGlow, 0, 0.029, -0.01)); // свет-точка на тыле
+  const fingerGeo = capGeo(0.0085, 0.030, 5);
+  for (let f = 0; f < 4; f++) {
+    const fx = -0.0195 + f * 0.013;
+    if (cig) {
+      // Почти прямые, чуть согнуты; зазор между 1-м и 2-м — под сигарету
+      const finger = mesh(fingerGeo, matGlove, fx, -0.004, -0.052);
+      finger.rotation.x = -0.35;
+      hand.add(finger);
+      const tipM = mesh(capGeo(0.0075, 0.020, 5), f === 1 ? matSilver : matGlove, fx, 0.006, -0.062);
+      tipM.rotation.x = -0.15;
+      hand.add(tipM);
+    } else {
+      // Согнуты вокруг рукояти
+      const finger = mesh(fingerGeo, matGlove, fx, -0.008, -0.046);
+      finger.rotation.x = -1.15;
+      hand.add(finger);
+      const tipM = mesh(capGeo(0.0075, 0.020, 5), matGlove, fx, -0.026, -0.052);
+      tipM.rotation.x = -1.5;
+      hand.add(tipM);
+    }
+  }
+  const thumb = mesh(capGeo(0.009, 0.032, 5), matGlove, 0.030 * side, -0.002, -0.018);
+  thumb.rotation.z = side * 0.9;
+  thumb.rotation.x = -0.5;
+  hand.add(thumb);
+
+  return { group: g, hand, accentMats: [matGlow] };
+}
+
+// ============================================================
 // 2. ОРУЖИЕ (вид от первого лица) — резной корпус, рукав с ремнями
 // ============================================================
 export function createViewmodel(kind = 'rifle') {
@@ -1675,43 +1766,45 @@ export function createViewmodel(kind = 'rifle') {
   const matGlow = flatMat(PALETTE.crimson, { emissive: PALETTE.crimson, ei: 2 });
   const matGrip = flatMat(PALETTE.coal, { rough: 0.95 });
 
-  // Руки (механические) + рукав с ремнями (как на референсе)
-  const matArm = flatMat(0x8a94a4, { metal: 0.4, rough: 0.5 });
-  const matSleeve = flatMat(0x3a3f4a, { rough: 0.85, metal: 0.1 });
-  const matStrap = flatMat(0x1c1e24, { rough: 0.9 });
-  const armR = mesh(boxGeo(0.07, 0.07, 0.3), matArm, 0.05, -0.06, 0.12);
-  group.add(armR);
+  // Руки кибердевушки (low-poly, в стиле персонажей): броня, свет-швы,
+  // перчатки с пальцами. Акцент меняется под скин (setAccent).
+  const accentMats = [];
+  const armR = createCyberArm({ side: 1, accent: PALETTE.crimson });
+  armR.group.position.set(0.055, -0.075, 0.13); // запястье у рукояти
+  armR.group.rotation.x = 0.15;                  // предплечье назад-вниз из кадра
+  group.add(armR.group);
+  accentMats.push(...armR.accentMats);
   // Левая рука — отдельная группа: на затяжке поднимается ко рту вместе
   // с сигаретой (иначе сигарета теряется за корпусом оружия)
   const armLGroup = new THREE.Group();
-  armLGroup.position.set(-0.06, -0.05, -0.08); // домашняя поза левой руки
+  armLGroup.position.set(-0.115, -0.085, -0.05); // левее/ниже: кисть с сигаретой явно в кадре
   const armLHome = armLGroup.position.clone();
-  const armL = mesh(boxGeo(0.07, 0.07, 0.24), matArm, 0, 0, 0);
-  armLGroup.add(armL);
+  const armL = createCyberArm({ side: -1, accent: PALETTE.crimson, cig: true });
+  armL.group.rotation.y = 0.5; // кисть наружу — сигарета на виду
+  armLGroup.add(armL.group);
+  accentMats.push(...armL.accentMats);
   group.add(armLGroup);
-  // Сигарета между пальцами: тлеющий кончик, затяжка каждые ~15с и после
-  // убийства (smokeNow)
+  // Сигарета между пальцами левой руки: тлеющий кончик с огоньком-спрайтом,
+  // затяжка каждые ~15с и после убийства (smokeNow)
   const cig = new THREE.Group();
-  const cigPaper = mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.11, 6), flatMat(0xe8e2d4, { rough: 0.9 }), 0, 0, 0);
+  const cigPaper = mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.14, 6), flatMat(0xe8e2d4, { rough: 0.9 }), 0, 0, 0);
   cigPaper.rotation.x = Math.PI / 2; // вдоль Z (вперёд)
-  const cigFilter = mesh(new THREE.CylinderGeometry(0.0074, 0.0074, 0.026, 6), flatMat(0xc07830, { rough: 0.9 }), 0, 0, 0.044);
+  const cigFilter = mesh(new THREE.CylinderGeometry(0.0095, 0.0095, 0.032, 6), flatMat(0xc07830, { rough: 0.9 }), 0, 0, 0.056);
   cigFilter.rotation.x = Math.PI / 2;
-  const cigTip = new THREE.Mesh(new THREE.SphereGeometry(0.009, 6, 5), new THREE.MeshBasicMaterial({ color: 0xff7a20 }));
-  cigTip.position.z = -0.058;
-  cig.add(cigPaper, cigFilter, cigTip);
-  cig.position.set(-0.02, 0.03, -0.10);
-  cig.rotation.y = 0.25;
-  armLGroup.add(cig);
-  // Правый рукав с ремнями
-  const sleeveR = mesh(boxGeo(0.1, 0.1, 0.2), matSleeve, 0.055, -0.055, 0.22);
-  group.add(sleeveR);
-  for (let i = 0; i < 3; i++) {
-    group.add(mesh(boxGeo(0.108, 0.108, 0.018), matStrap, 0.055, -0.055, 0.16 + i * 0.05));
-    group.add(mesh(boxGeo(0.02, 0.02, 0.02), flatMat(PALETTE.mechSilver, { metal: 0.8, rough: 0.3 }), 0.055, -0.11, 0.16 + i * 0.05));
-  }
-  // Левый рукав с одним ремнём — в группе левой руки (поднимается с ней)
-  armLGroup.add(mesh(boxGeo(0.095, 0.095, 0.12), matSleeve, 0, 0, 0.06));
-  armLGroup.add(mesh(boxGeo(0.1, 0.1, 0.018), matStrap, 0, 0, 0.06));
+  const cigTip = new THREE.Mesh(new THREE.SphereGeometry(0.011, 6, 5), new THREE.MeshBasicMaterial({ color: 0xff7a20 }));
+  cigTip.position.z = -0.072;
+  // Огонёк тления — additive-спрайт (пульс), чтобы сигарета читалась всегда
+  const emberGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: createGlowDotTexture(), color: 0xff8a30, transparent: true, opacity: 0.95,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  }));
+  emberGlow.scale.setScalar(0.038);
+  emberGlow.position.z = -0.072;
+  cig.add(cigPaper, cigFilter, cigTip, emberGlow);
+  cig.position.set(0, 0.006, -0.07); // между указательным и средним пальцами
+  cig.rotation.y = -0.18;
+  cig.rotation.x = -0.12;
+  armL.group.add(cig); // в кисти левой руки — видна всегда, когда оружие одиночное
 
   let muzzle, magazine;
   // Корпусные меши (заменяются скачанным бластером в upgradeViewmodel)
@@ -1916,6 +2009,7 @@ export function createViewmodel(kind = 'rifle') {
 
     // --- Сигарета: затяжка по таймеру ~15с или по smokeNow() (после килла) ---
     if (cig.visible) {
+      emberGlow.material.opacity = 0.55 + Math.sin(st.t * 5.5) * 0.3; // тление пульсирует
       if (st.cigT <= 0 && st.t > st.nextCigAt) st.cigT = 1.7;
       if (st.cigT > 0) {
         st.cigT -= dt;
@@ -2041,6 +2135,13 @@ export function createViewmodel(kind = 'rifle') {
     group, muzzle, magazine, bodyParts, magHome, update, kick, startReload, isReloading, st,
     setPose, smokeNow, isSmoking, setCigVisible, cigTip,
     cigVisible: () => cig.visible,
+    // Акцент свет-швов рук под скин команды
+    setAccent: (hex) => {
+      for (const m of accentMats) {
+        m.color.setHex(hex);
+        m.emissive?.setHex(hex);
+      }
+    },
   };
   return vmApi;
 }

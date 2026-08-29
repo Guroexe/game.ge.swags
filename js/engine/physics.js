@@ -6,22 +6,74 @@ import * as THREE from 'three';
 export class PhysicsWorld {
   constructor() {
     this.gravity = -22;
-    this.statics = [];      // {min:Vector3, max:Vector3, tag}
+    this.statics = [];      // {min:Vector3, max:Vector3, tag, deleted?, _gkeys?}
     this.chunkProvider = null; // функция (aabb)=>массив чанк-AABB разрушаемых
     this._tmpBox = new THREE.Box3();
+    // Пространственная хэш-сетка по XZ: на больших GLB-картах (30-160к
+    // коллайдеров) линейный обход всех статиков за кадр был бы слишком дорогим.
+    this._cell = 4;              // м на ячейку
+    this._grid = new Map();      // "cx|cz" -> int[] (индексы statics)
+  }
+
+  _gKeys(box) {
+    const keys = [];
+    const x0 = Math.floor(box.min.x / this._cell), x1 = Math.floor(box.max.x / this._cell);
+    const z0 = Math.floor(box.min.z / this._cell), z1 = Math.floor(box.max.z / this._cell);
+    for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) keys.push(x + '|' + z);
+    return keys;
   }
 
   addStatic(min, max, tag = 'static') {
     const b = { min: min.clone(), max: max.clone(), tag };
+    const idx = this.statics.length;
     this.statics.push(b);
+    b._gkeys = this._gKeys(b);
+    for (const k of b._gkeys) {
+      let arr = this._grid.get(k);
+      if (!arr) this._grid.set(k, arr = []);
+      arr.push(idx);
+    }
     return b;
   }
   addStaticBox(box3, tag = 'static') { return this.addStatic(box3.min, box3.max, tag); }
+
+  // Удаление — пометкой (deleted): индексы в сетке не сдвигаются
   removeStatic(b) {
     const i = this.statics.indexOf(b);
-    if (i >= 0) this.statics.splice(i, 1);
+    if (i < 0) return;
+    b.deleted = true;
+    if (b._gkeys) {
+      for (const k of b._gkeys) {
+        const arr = this._grid.get(k);
+        if (!arr) continue;
+        const j = arr.indexOf(i);
+        if (j >= 0) arr.splice(j, 1);
+      }
+      b._gkeys = null;
+    }
   }
-  clear() { this.statics.length = 0; }
+
+  // Перерегистрация после изменения min/max (станции на GLB-картах)
+  updateStatic(b) {
+    const i = this.statics.indexOf(b);
+    if (i < 0) return;
+    if (b._gkeys) {
+      for (const k of b._gkeys) {
+        const arr = this._grid.get(k);
+        if (!arr) continue;
+        const j = arr.indexOf(i);
+        if (j >= 0) arr.splice(j, 1);
+      }
+    }
+    b._gkeys = this._gKeys(b);
+    for (const k of b._gkeys) {
+      let arr = this._grid.get(k);
+      if (!arr) this._grid.set(k, arr = []);
+      arr.push(i);
+    }
+  }
+
+  clear() { this.statics.length = 0; this._grid.clear(); }
 
   // AABB тела в позиции pos (pos — ноги/центр-низ), size {x: полширина, y: высота}
   _bodyBox(pos, half, height, out) {
@@ -83,10 +135,21 @@ export class PhysicsWorld {
   }
 
   _firstOverlap(box) {
-    for (const s of this.statics) {
-      if (box.min.x < s.max.x && box.max.x > s.min.x &&
-          box.min.y < s.max.y && box.max.y > s.min.y &&
-          box.min.z < s.max.z && box.max.z > s.min.z) return s;
+    // Кандидаты только из ячеек сетки под боксом (а не все статики)
+    const x0 = Math.floor(box.min.x / this._cell), x1 = Math.floor(box.max.x / this._cell);
+    const z0 = Math.floor(box.min.z / this._cell), z1 = Math.floor(box.max.z / this._cell);
+    for (let x = x0; x <= x1; x++) {
+      for (let z = z0; z <= z1; z++) {
+        const arr = this._grid.get(x + '|' + z);
+        if (!arr) continue;
+        for (const i of arr) {
+          const s = this.statics[i];
+          if (s.deleted) continue;
+          if (box.min.x < s.max.x && box.max.x > s.min.x &&
+              box.min.y < s.max.y && box.max.y > s.min.y &&
+              box.min.z < s.max.z && box.max.z > s.min.z) return s;
+        }
+      }
     }
     if (this.chunkProvider) {
       const chunks = this.chunkProvider(box);
@@ -99,19 +162,42 @@ export class PhysicsWorld {
     return null;
   }
 
-  // Raycast по статике (и опционально по мешам через three Raycaster снаружи).
-  // Возвращает {point, normal, dist, tag} или null.
+  // Raycast по статике: DDA-обход сетки вдоль луча (только ячейки на пути),
+  // чанки разрушаемых — по AABB луча. Возвращает {point, normal, dist, tag} или null.
   raycast(origin, dir, maxDist = 100) {
     let best = null;
     let bestT = maxDist;
     const test = (box, tag) => {
+      if (box.deleted) return;
       const t = this._rayBox(origin, dir, box);
       if (t !== null && t < bestT) {
         bestT = t;
         best = { dist: t, tag, point: new THREE.Vector3().copy(dir).multiplyScalar(t).add(origin), normal: this._boxNormal(box, origin, dir, t) };
       }
     };
-    for (const s of this.statics) test(s, s.tag);
+    const cs = this._cell;
+    const adx = Math.abs(dir.x), adz = Math.abs(dir.z);
+    if (adx < 1e-9 && adz < 1e-9) {
+      // Вертикальный луч — живёт в одной XZ-ячейке
+      const arr = this._grid.get(Math.floor(origin.x / cs) + '|' + Math.floor(origin.z / cs));
+      if (arr) for (const i of arr) test(this.statics[i], this.statics[i].tag);
+    } else {
+      // DDA: шагаем по ячейкам вдоль луча, пока не дальше лучшего попадания
+      let cx = Math.floor(origin.x / cs), cz = Math.floor(origin.z / cs);
+      const stepX = dir.x > 0 ? 1 : -1, stepZ = dir.z > 0 ? 1 : -1;
+      const tDX = adx < 1e-9 ? Infinity : cs / adx;
+      const tDZ = adz < 1e-9 ? Infinity : cs / adz;
+      let tMaxX = adx < 1e-9 ? Infinity : (((dir.x > 0 ? cx + 1 : cx) * cs) - origin.x) / dir.x;
+      let tMaxZ = adz < 1e-9 ? Infinity : (((dir.z > 0 ? cz + 1 : cz) * cs) - origin.z) / dir.z;
+      let t = 0;
+      let guard = 0;
+      while (t <= bestT && guard++ < 512) {
+        const arr = this._grid.get(cx + '|' + cz);
+        if (arr) for (const i of arr) test(this.statics[i], this.statics[i].tag);
+        if (tMaxX < tMaxZ) { t = tMaxX; tMaxX += tDX; cx += stepX; }
+        else { t = tMaxZ; tMaxZ += tDZ; cz += stepZ; }
+      }
+    }
     if (this.chunkProvider) {
       // Большой запрос: AABB вдоль луча
       const end = new THREE.Vector3().copy(dir).multiplyScalar(maxDist).add(origin);

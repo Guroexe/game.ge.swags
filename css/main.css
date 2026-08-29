@@ -1204,11 +1204,11 @@ input[type="checkbox"]:checked::after {
 /* --- Верх-слева: радар (металлическое кольцо) + тиммейты --- */
 #radar {
   width: 172px; height: 172px;
-  background: url("../assets/ui/hud_radar.png") no-repeat center;
+  background: url("../assets/ui/hud_radar.svg") no-repeat center;
   background-size: 100% 100%;
 }
 #mates {
-  background: url("../assets/ui/hud_teams.png") no-repeat center;
+  background: url("../assets/ui/hud_teams.svg") no-repeat center;
   background-size: 100% 100%;
   padding: 16px 12px 12px 26px;
   min-width: 158px; min-height: 96px;
@@ -1302,7 +1302,7 @@ input[type="checkbox"]:checked::after {
 #mates {
   position: relative; width: 170px; height: 196px;
   padding: 0; margin-top: 10px;
-  background: url("../assets/ui/hud_teams.png") no-repeat center;
+  background: url("../assets/ui/hud_teams.svg") no-repeat center;
   background-size: 100% 100%;
 }
 .mate { position: absolute; left: 9%; right: 7%; height: 22px; display: flex; align-items: center; gap: 6px; }
